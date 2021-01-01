@@ -1,6 +1,9 @@
 import torch
 
 from random import shuffle
+
+from torch.utils.data import Subset
+
 from .wrapper import Subclass, AppendName, Permutation
 
 
@@ -22,7 +25,7 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
     # Ex: [0,2,4,6,8,10] or [0,50,60,70,80,90,100]
     split_boundaries = [0, first_split_sz]
     while split_boundaries[-1] < num_classes:
-        split_boundaries.append(split_boundaries[-1]+other_split_sz)
+        split_boundaries.append(split_boundaries[-1] + other_split_sz)
     print('split_boundaries:', split_boundaries)
     assert split_boundaries[-1] == num_classes, 'Invalid split size'
 
@@ -51,17 +54,68 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
     return train_dataset_splits, val_dataset_splits, task_output_space
 
 
+def celebaSplit(dataset, num_batches=5):
+    attr = dataset.attr
+
+    if num_batches == 5:
+        attr_split = {
+            0: [33, 8],
+            1: [15],
+            2: [9],
+            3: [17],
+            4: [35]
+        }
+    else:
+        raise NotImplementedError()
+
+    indices = torch.zeros(len(dataset)) - 1
+    # val_indices = torch.zeros(len(train_dataset)) - 1
+    for task in attr_split:
+        split = attr_split[task]
+        indices[attr[:, split].prod(1).bool()] = task
+        # val_indices[val_attr[:, split].prod(1).bool()] = task
+
+    ### @TODO split to different classes
+    dataset.attr = indices.view(-1,1).long()
+
+    train_dataset_splits = {}
+    val_dataset_splits = {}
+    task_output_space = {}
+
+    dataset_len = len(dataset)
+    train_set_len = int(dataset_len * 0.8)
+    train_indices = indices[:train_set_len]
+    val_indices = indices[train_set_len:]
+
+    for name in attr_split:
+        train_subset = Subset(dataset, torch.where(train_indices == name)[0])
+        train_subset.labels = torch.ones(len(train_subset),1) * name
+        # train_subset.attr = train_subset.labels
+        train_subset.class_list = [name]
+
+        val_subset = Subset(dataset, train_set_len + torch.where(val_indices <= name)[0])
+        val_subset.labels = torch.ones(len(val_subset),1) * name
+        val_subset.class_list = [name]
+        # val_subset.attr = val_subset.labels
+
+        train_dataset_splits[name] = AppendName(train_subset, name)
+        val_dataset_splits[name] = AppendName(val_subset, name)
+        task_output_space[name] = (indices == name).sum()
+
+    return train_dataset_splits, val_dataset_splits, task_output_space
+
+
 def PermutedGen(train_dataset, val_dataset, n_permute, remap_class=False):
     sample, _ = train_dataset[0]
     n = sample.numel()
     train_datasets = {}
     val_datasets = {}
     task_output_space = {}
-    for i in range(1, n_permute+1):
+    for i in range(1, n_permute + 1):
         rand_ind = list(range(n))
         shuffle(rand_ind)
         name = str(i)
-        first_class_ind = (i-1)*train_dataset.number_classes if remap_class else 0
+        first_class_ind = (i - 1) * train_dataset.number_classes if remap_class else 0
         train_datasets[name] = AppendName(Permutation(train_dataset, rand_ind), name, first_class_ind=first_class_ind)
         val_datasets[name] = AppendName(Permutation(val_dataset, rand_ind), name, first_class_ind=first_class_ind)
         task_output_space[name] = train_dataset.number_classes

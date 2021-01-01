@@ -1,4 +1,5 @@
-import numpy as np 
+import matplotlib
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
@@ -19,11 +20,12 @@ def dict2array(results):
 def grid_plot(ax, array, exp_name):
     avg_array = np.around(np.mean(array, axis = 0), 1)
     num_tasks = array.shape[1]
-    ax.imshow(avg_array, vmin=0, vmax=100)
+    cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["#287233","#4c1c24"])
+    ax.imshow(avg_array, vmin=50, vmax=300, cmap=cmap)
     for i in range(len(avg_array)):
         for j in range(avg_array.shape[1]):
             if j >= i:
-                ax.text(j,i, avg_array[i,j], va='center', ha='center', c='w', fontsize=90/num_tasks)
+                ax.text(j,i, avg_array[i,j], va='center', ha='center', c='w', fontsize=70/num_tasks)
     ax.set_yticks(np.arange(num_tasks))
     ax.set_ylabel('Number of tasks')
     ax.set_xticks(np.arange(num_tasks))
@@ -46,13 +48,13 @@ def plot_final_results(names,rpath = 'results/'):
         acc_dict = np.load(f"{rpath}{name}/acc_val.npy", allow_pickle=True).item()
         arr = dict2array(acc_dict)
         ax1 = fig.add_subplot(gs[e, 0])
-        ax2 = fig.add_subplot(gs[e, 1:])
+        # ax2 = fig.add_subplot(gs[e, 1:])
         grid_plot(ax1, arr, name)
-        acc_over_time_plot(ax2, arr)
+        # acc_over_time_plot(ax2, arr)
 
     # plt.show()
     plt.savefig(rpath+names[0]+"/results_visualisation")
 
-# names = ['FashionMNIST_test']
-# plot_final_results(['CIFAR_10'])
-    
+
+if __name__ == '__main__':
+    plot_final_results(['CelebA_mini_test'])

@@ -6,6 +6,23 @@ import torch
 from torch.utils.data import Dataset, DataLoader, Subset, TensorDataset
 
 
+def CelebA(root, skip_normalization=False, train_aug=False, image_size=64, target_type='attr'):
+    transform = transforms.Compose([
+
+        transforms.Resize(image_size),
+        transforms.RandomHorizontalFlip(),
+        transforms.CenterCrop(image_size),
+        transforms.ToTensor()
+        # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
+    dataset = torchvision.datasets.CelebA(root=root, download=True, transform=transform,
+                                          target_type=target_type)
+
+    # train_set = CacheClassLabel(train_set)
+    # val_set = CacheClassLabel(val_set)
+    return dataset, None
+
+
 def MNIST(dataroot, skip_normalization=False, train_aug=False):
     normalize = transforms.Normalize(mean=(0.1307,), std=(0.3081,))  # for 28x28
     # normalize = transforms.Normalize(mean=(0.1000,), std=(0.2752,))  # for 32x32
@@ -112,7 +129,7 @@ def CIFAR10(dataroot, skip_normalization=False, train_aug=False):
         train=True,
         download=True,
         transform=train_transform
-        )
+    )
     train_dataset = CacheClassLabel(train_dataset)
 
     val_dataset = torchvision.datasets.CIFAR10(
