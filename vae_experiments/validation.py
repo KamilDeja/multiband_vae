@@ -16,7 +16,7 @@ class Validator:
         self.score_model_device = score_model_device
         self.dataloaders = dataloaders
 
-        print("Validation")
+        print("Preparing validator")
         if dataset == "MNIST":
             from vae_experiments.evaluation_models.lenet import Model
             net = Model()

@@ -54,29 +54,61 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
     return train_dataset_splits, val_dataset_splits, task_output_space
 
 
-def celebaSplit(dataset, num_batches=5):
+def celebaSplit(dataset, num_batches=5, num_classes=10):
     attr = dataset.attr
+    if num_classes == 10:
+        class_split = {
+            0: [8, 20],
+            1: [8, -20],
+            2: [11, 20],
+            3: [11, -20],
+            4: [35, 20],
+            5: [35, -20],
+            6: [9, 20],
+            7: [9, -20],
+            8: [17],
+            9: [4]
+        }
+    else:
+        raise NotImplementedError
 
     if num_batches == 5:
-        attr_split = {
-            0: [33, 8],
-            1: [15],
-            2: [9],
-            3: [17],
-            4: [35]
+        batch_split = {
+            0: [0, 1],
+            1: [2, 3],
+            2: [4, 5],
+            3: [6, 7],
+            4: [8, 9]
+        }
+    elif num_batches == 1:
+        batch_split = {
+            0: range(10)
         }
     else:
         raise NotImplementedError()
 
-    indices = torch.zeros(len(dataset)) - 1
+    class_indices = torch.zeros(len(dataset)) - 1
+
+    for class_id in class_split:
+        tmp_attr = class_split[class_id]
+        tmp_indices = torch.ones(len(dataset))
+        for i in tmp_attr:
+            if i > 0:
+                tmp_indices = tmp_indices * attr[:, i]
+            else:
+                tmp_indices = tmp_indices * (1 - attr[:, -i])
+        class_indices[tmp_indices.bool()] = class_id
+
     # val_indices = torch.zeros(len(train_dataset)) - 1
-    for task in attr_split:
-        split = attr_split[task]
-        indices[attr[:, split].prod(1).bool()] = task
+    batch_indices = torch.zeros(len(dataset)) - 1
+    for task in batch_split:
+        split = batch_split[task]
+        batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)] = task  # class_indices in split
+        # indices[attr[:, split].prod(1).bool()] = task
         # val_indices[val_attr[:, split].prod(1).bool()] = task
 
     ### @TODO split to different classes
-    dataset.attr = indices.view(-1,1).long()
+    dataset.attr = class_indices.view(-1, 1).long()
 
     train_dataset_splits = {}
     val_dataset_splits = {}
@@ -84,24 +116,27 @@ def celebaSplit(dataset, num_batches=5):
 
     dataset_len = len(dataset)
     train_set_len = int(dataset_len * 0.8)
-    train_indices = indices[:train_set_len]
-    val_indices = indices[train_set_len:]
+    train_indices = batch_indices[:train_set_len]
+    train_class_indices = class_indices[:train_set_len]
+    val_indices = batch_indices[train_set_len:]
+    val_class_indices = class_indices[train_set_len:]
 
-    for name in attr_split:
+    for name in batch_split:
         train_subset = Subset(dataset, torch.where(train_indices == name)[0])
-        train_subset.labels = torch.ones(len(train_subset),1) * name
+        train_subset.labels = train_class_indices[train_indices == name]  # torch.ones(len(train_subset), 1) * name
         # train_subset.attr = train_subset.labels
-        train_subset.class_list = [name]
+        train_subset.class_list = batch_split[name]
 
-        val_subset = Subset(dataset, train_set_len + torch.where(val_indices <= name)[0])
-        val_subset.labels = torch.ones(len(val_subset),1) * name
-        val_subset.class_list = [name]
+        val_subset = Subset(dataset, train_set_len + torch.where(val_indices == name)[0])
+        val_subset.labels = val_class_indices[val_indices == name]  # torch.ones(len(val_subset), 1) * name
+        val_subset.class_list = batch_split[name]
         # val_subset.attr = val_subset.labels
 
         train_dataset_splits[name] = AppendName(train_subset, name)
         val_dataset_splits[name] = AppendName(val_subset, name)
-        task_output_space[name] = (indices == name).sum()
+        task_output_space[name] = (batch_indices == name).sum()
 
+    print(f"Prepared dataset with split: {torch.unique(batch_indices, return_counts=True)}")
     return train_dataset_splits, val_dataset_splits, task_output_space
 
 

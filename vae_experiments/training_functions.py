@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import optim
 
 from vae_experiments.lap_loss import LapLoss
 from vae_experiments.vae_utils import *
@@ -26,11 +27,11 @@ def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
     return loss
 
 
-def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100):
+def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100, use_lap_loss=False):
     optimizer = torch.optim.RMSprop(local_vae.parameters(), lr=0.001)
-    # scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.95)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.95)
     table_tmp = torch.zeros(n_classes, dtype=torch.long)
-    lap_loss = LapLoss(device=local_vae.device)
+    lap_loss = LapLoss(device=local_vae.device) if use_lap_loss else None
 
     for epoch in range(n_epochs):
         losses = []
@@ -50,8 +51,9 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
             if epoch == 0:
                 class_counter = torch.unique(y, return_counts=True)
                 table_tmp[class_counter[0]] += class_counter[1].cpu()
-        #     scheduler.step()
+        scheduler.step()
         #     print("lr:",scheduler.get_lr())
+        #     print(iteration,len(task_loader))
         if epoch % 10 == 0:
             print("Epoch: {}/{}, loss: {}".format(epoch, n_epochs, np.mean(losses)))
     return (table_tmp)
@@ -61,7 +63,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
                          batch_size=1000):
     global_decoder = copy.deepcopy(curr_global_decoder)
     optimizer = torch.optim.RMSprop(global_decoder.parameters(), lr=0.005)
-    #     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.99)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.99)
     criterion = nn.BCELoss(reduction='sum')
     class_samplers = prepare_class_samplres(task_id + 1, class_table)
 
@@ -95,7 +97,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
             optimizer.step()
 
             losses.append(loss.item())
-        #         scheduler.step()
+        scheduler.step()
         #     print("lr:",scheduler.get_lr())
         if (epoch % 10 == 0):
             print("Epoch: {}/{}, loss: {}".format(epoch, n_epochs, np.mean(losses)))

@@ -27,10 +27,11 @@ def run(args):
                                                                          args.train_aug)
 
     if args.dataset.lower() == "celeba":
-        n_batches = 5
-        train_dataset_splits, val_dataset_splits, task_output_space = celebaSplit(train_dataset, num_batches=n_batches)
+        n_classes = 10
+        n_batches = n_classes // args.other_split_size
+        train_dataset_splits, val_dataset_splits, task_output_space = celebaSplit(train_dataset, num_batches=n_batches,
+                                                                                  num_classes=n_classes)
         from vae_experiments import models_definition_celeba as models_definition
-        n_classes = n_batches
     else:
         from vae_experiments import models_definition_mnist as models_definition
         train_dataset_splits, val_dataset_splits, task_output_space = SplitGen(train_dataset, val_dataset,
@@ -119,8 +120,8 @@ def run(args):
                 curr_global_decoder = training_functions.train_global_decoder(curr_global_decoder=curr_global_decoder,
                                                                               local_vae=local_vae,
                                                                               task_id=task_id, class_table=class_table,
-                                                                              n_iterations=args.gen_batch_size,
-                                                                              n_epochs=args.gen_ae_epochs,
+                                                                              n_iterations=len(train_dataset_loader),
+                                                                              n_epochs=args.global_dec_epochs,
                                                                               batch_size=args.gen_batch_size)
             torch.cuda.empty_cache()
 
@@ -135,13 +136,17 @@ def run(args):
 
         # Classifier validation
         fid_table[task_name] = OrderedDict()
-        for j in range(task_id + 1):
-            val_name = task_names[j]
-            print('validation split name:', val_name)
-            fid_result = validator.compute_fid(curr_global_decoder=curr_global_decoder, class_table=class_table,
-                                               task_id=j)
-            fid_table[j][task_name] = fid_result
-            print(f"FID task {j}: {fid_result}")
+        if args.skip_validation:
+            for j in range(task_id + 1):
+                fid_table[j][task_name] = -1
+        else:
+            for j in range(task_id + 1):
+                val_name = task_names[j]
+                print('validation split name:', val_name)
+                fid_result = validator.compute_fid(curr_global_decoder=curr_global_decoder, class_table=class_table,
+                                                   task_id=j)
+                fid_table[j][task_name] = fid_result
+                print(f"FID task {j}: {fid_result}")
 
     return fid_table, task_names, test_fid_table
 
@@ -160,10 +165,12 @@ def get_args(argv):
     parser.add_argument('--score_on_val', action='store_true', required=False, default=False,
                         help="Compute FID on validation dataset instead of validation dataset")
     parser.add_argument('--val_batch_size', type=int, default=250)
+    parser.add_argument('--skip_validation', default=False, action='store_true')
+
 
     # Data
     parser.add_argument('--dataroot', type=str, default='data', help="The root folder of dataset or downloaded data")
-    parser.add_argument('--dataset', type=str, default='MNIST', help="MNIST(default)|FashionMNIST|CIFAR10|CIFAR100")
+    parser.add_argument('--dataset', type=str, default='MNIST', help="MNIST(default)|CelebA")
     parser.add_argument('--n_permutation', type=int, default=0, help="Enable permuted tests when >0")
     parser.add_argument('--first_split_size', type=int, default=2)
     parser.add_argument('--other_split_size', type=int, default=2)
@@ -186,7 +193,8 @@ def get_args(argv):
                         help="Prime number used to calculated codes in binary autoencoder")
     parser.add_argument('--gen_latent_size', type=int, default=10, help="Latent size in binary autoencoder")
     parser.add_argument('--gen_d', type=int, default=8, help="Size of binary autoencoder")
-    parser.add_argument('--gen_ae_epochs', type=int, default=200, help="Number of epochs to train autoencoder")
+    parser.add_argument('--gen_ae_epochs', type=int, default=20, help="Number of epochs to train local variational autoencoder")
+    parser.add_argument('--global_dec_epochs', type=int, default=20, help="Number of epochs to train global decoder")
     parser.add_argument('--gen_load_pretrained_models', default=False, help="Load pretrained generative models")
     parser.add_argument('--gen_pretrained_models_dir', type=str, default="results/pretrained_models",
                         help="Directory of pretrained generative models")

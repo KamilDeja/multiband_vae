@@ -206,10 +206,10 @@ def fid_inception_v3():
 
     model_path = "vae_experiments/evaluation_models/inception"
     if os.path.exists(model_path):
-        print("Loading saved model")
+        print("Loading cached inception model for validation")
         state_dict = torch.load(model_path)
     else:
-        print("Downloading model")
+        print("Downloading inception model for validation")
         state_dict = load_state_dict_from_url(FID_WEIGHTS_URL, progress=True)
         torch.save(state_dict, model_path)
     inception.load_state_dict(state_dict)
