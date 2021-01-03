@@ -64,8 +64,8 @@ def run(args):
 
     # Prepare VAE
     local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
-                                      n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_p_coding,
-                                      cond_n_dim_coding=args.gen_n_dim_coding, cond_dim=n_classes, device=device).to(device)
+                                      n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
+                                      cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes, device=device).to(device)
 
     print(local_vae)
     class_table = torch.zeros(n_tasks, n_classes, dtype=torch.long)
@@ -146,6 +146,7 @@ def get_args(argv):
                         help="Compute FID on validation dataset instead of validation dataset")
     parser.add_argument('--val_batch_size', type=int, default=250)
     parser.add_argument('--skip_validation', default=False, action='store_true')
+    parser.add_argument('--training_procedure', type=str, default='multiband', help='Training procedure multiband|replay')
 
     # Data
     parser.add_argument('--dataroot', type=str, default='data', help="The root folder of dataset or downloaded data")
@@ -166,9 +167,13 @@ def get_args(argv):
 
     # Generative network - multiband vae
     parser.add_argument('--gen_batch_size', type=int, default=50)
-    parser.add_argument('--gen_n_dim_coding', type=int, default=10,
+    parser.add_argument('--gen_n_dim_coding', type=int, default=4,
                         help="Number of bits used to code task id in binary autoencoder")
-    parser.add_argument('--gen_p_coding', type=int, default=307,
+    parser.add_argument('--gen_p_coding', type=int, default=9,
+                        help="Prime number used to calculated codes in binary autoencoder")
+    parser.add_argument('--gen_cond_n_dim_coding', type=int, default=4,
+                        help="Number of bits used to code task id in binary autoencoder")
+    parser.add_argument('--gen_cond_p_coding', type=int, default=9,
                         help="Prime number used to calculated codes in binary autoencoder")
     parser.add_argument('--gen_latent_size', type=int, default=10, help="Latent size in binary autoencoder")
     parser.add_argument('--gen_d', type=int, default=8, help="Size of binary autoencoder")

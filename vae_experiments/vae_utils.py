@@ -50,7 +50,7 @@ def generate_images(curr_global_decoder, z, task_ids, y):
     return example
 
 
-def generate_noise_for_previous_data(n_img, class_table, n_task, latent_size, same_z=False):
+def generate_noise_for_previous_data(n_img, n_task, latent_size, same_z=False):
     if same_z:
         z = torch.randn([n_img // (n_task + 1), latent_size]).repeat([n_task + 1])
         raise NotImplementedError  # Check first if it works
@@ -59,8 +59,9 @@ def generate_noise_for_previous_data(n_img, class_table, n_task, latent_size, sa
     return z
 
 
-def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, same_z=False):
-    z = generate_noise_for_previous_data(n_img, class_table, n_tasks, curr_global_decoder.latent_size, same_z).to(
+def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, same_z=False, return_z = False):
+    class_table = class_table[:n_tasks]
+    z = generate_noise_for_previous_data(n_img, n_tasks, curr_global_decoder.latent_size, same_z).to(
         curr_global_decoder.device)
     tasks_dist = torch.sum(class_table, dim=1) * n_img // torch.sum(class_table)
     tasks_dist[0:n_img - tasks_dist.sum()] += 1  # To fix the division
@@ -69,15 +70,18 @@ def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, sam
     for task_id in range(n_tasks):
         task_ids.append([task_id] * tasks_dist[task_id])
     task_ids = np.concatenate(task_ids)  # np.repeat(list(range(n_tasks)), n_img)
-    assert (len(task_ids == n_img))
+    assert len(task_ids) == n_img
 
     class_samplers = prepare_class_samplres(n_tasks, class_table)
 
     sampled_classes = []
     for task_id in range(n_tasks):
-        sampled_classes.append(class_samplers[task_id].sample(tasks_dist[task_id]))
+        sampled_classes.append(class_samplers[task_id].sample(tasks_dist[task_id].view(-1, 1)))
     sampled_classes = torch.cat(sampled_classes)
-    assert len(sampled_classes == n_img)
+    assert len(sampled_classes) == n_img
 
     example = generate_images(curr_global_decoder, z, task_ids, sampled_classes)
-    return example, sampled_classes
+    if return_z:
+        return example, sampled_classes, z, task_ids
+    else:
+        return example, sampled_classes

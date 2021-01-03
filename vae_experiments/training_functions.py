@@ -11,7 +11,7 @@ import copy
 
 def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
     marginal_likelihood = F.binary_cross_entropy(y, x_target, reduction='sum') / y.size(0)
-
+    # marginal_likelihood = F.binary_cross_entropy(y, x_target, reduction='sum') / y.size(0)
     # KL_divergence = 0.5 * torch.sum(
     #     torch.pow(mu, 2) +
     #     torch.pow(sigma, 2) -
@@ -63,33 +63,32 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
                          batch_size=1000):
     global_decoder = copy.deepcopy(curr_global_decoder)
     optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
-    criterion = nn.BCELoss(reduction='sum')
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
+    criterion = nn.MSELoss(reduction='sum')
     class_samplers = prepare_class_samplres(task_id + 1, class_table)
+    task_ids_local = np.zeros([batch_size]) + task_id
 
     for epoch in range(n_epochs):
         losses = []
         for iteration in range(n_iterations):
-
             # Building dataset from previous global model and local model
+            recon_prev, classes_prev, z_prev, task_ids_prev = generate_previous_data(curr_global_decoder,
+                                                                                     class_table=class_table,
+                                                                                     n_tasks=task_id,
+                                                                                     n_img=batch_size * task_id,
+                                                                                     return_z=True)
+
             with torch.no_grad():
-                z_prev = torch.randn([batch_size * task_id, local_vae.latent_size]).to(curr_global_decoder.device)
-                task_ids_prev = np.repeat(list(range(task_id)), [batch_size])
-                sampled_classes = []
-                for i in range(task_id + 1):  ## Including current class
-                    sampled_classes.append(class_samplers[i].sample([batch_size]))
-                sampled_classes_prev = torch.cat(sampled_classes[:-1])
-                recon_prev = curr_global_decoder(z_prev, task_ids_prev, sampled_classes_prev)
                 # @TODO Check if training with same random variables for both local and previous global model works better
+                sampled_classes_local = class_samplers[-1].sample([batch_size])
                 z_local = torch.randn([batch_size, local_vae.latent_size]).to(curr_global_decoder.device)
-                task_ids_local = np.zeros([batch_size]) + task_id
-                recon_local = local_vae.decoder(z_local, task_ids_local, sampled_classes[-1])
+                recon_local = local_vae.decoder(z_local, task_ids_local, sampled_classes_local)
 
             z_concat = torch.cat([z_prev, z_local])
             task_ids_concat = np.concatenate([task_ids_prev, task_ids_local]).reshape(-1, 1)
             recon_concat = torch.cat([recon_prev, recon_local])
 
-            global_recon = global_decoder(z_concat, task_ids_concat, torch.cat(sampled_classes))
+            global_recon = global_decoder(z_concat, task_ids_concat, torch.cat([classes_prev, sampled_classes_local]))
             loss = criterion(global_recon, recon_concat)
 
             optimizer.zero_grad()

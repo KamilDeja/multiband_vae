@@ -24,6 +24,8 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
             curr_global_decoder = models_definition.Decoder(latent_size=local_vae.latent_size, d=args.gen_d,
                                                             p_coding=local_vae.p_coding,
                                                             n_dim_coding=local_vae.n_dim_coding,
+                                                            cond_p_coding=local_vae.cond_p_coding,
+                                                            cond_n_dim_coding=local_vae.cond_n_dim_coding,
                                                             cond_dim=n_classes, device=local_vae.device).to(device)
             curr_global_decoder.load_state_dict(
                 torch.load(args.gen_pretrained_models_dir + f'model{task_id}_curr_decoder'))
