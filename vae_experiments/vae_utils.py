@@ -60,28 +60,31 @@ def generate_noise_for_previous_data(n_img, n_task, latent_size, same_z=False):
 
 
 def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, same_z=False, return_z = False):
-    class_table = class_table[:n_tasks]
-    z = generate_noise_for_previous_data(n_img, n_tasks, curr_global_decoder.latent_size, same_z).to(
-        curr_global_decoder.device)
-    tasks_dist = torch.sum(class_table, dim=1) * n_img // torch.sum(class_table)
-    tasks_dist[0:n_img - tasks_dist.sum()] += 1  # To fix the division
-    assert sum(tasks_dist) == n_img
-    task_ids = []
-    for task_id in range(n_tasks):
-        task_ids.append([task_id] * tasks_dist[task_id])
-    task_ids = np.concatenate(task_ids)  # np.repeat(list(range(n_tasks)), n_img)
-    assert len(task_ids) == n_img
+    with torch.no_grad():
+        curr_class_table = class_table[:n_tasks]
+        z = generate_noise_for_previous_data(n_img, n_tasks, curr_global_decoder.latent_size, same_z).to(
+            curr_global_decoder.device)
+        tasks_dist = torch.sum(curr_class_table, dim=1) * n_img // torch.sum(curr_class_table)
+        tasks_dist[0:n_img - tasks_dist.sum()] += 1  # To fix the division
+        assert sum(tasks_dist) == n_img
+        task_ids = []
+        for task_id in range(n_tasks):
+            if tasks_dist[task_id] > 0:
+                task_ids.append([task_id] * tasks_dist[task_id])
+        task_ids = np.concatenate(task_ids)  # np.repeat(list(range(n_tasks)), n_img)
+        assert len(task_ids) == n_img
 
-    class_samplers = prepare_class_samplres(n_tasks, class_table)
+        class_samplers = prepare_class_samplres(n_tasks, curr_class_table)
 
-    sampled_classes = []
-    for task_id in range(n_tasks):
-        sampled_classes.append(class_samplers[task_id].sample(tasks_dist[task_id].view(-1, 1)))
-    sampled_classes = torch.cat(sampled_classes)
-    assert len(sampled_classes) == n_img
+        sampled_classes = []
+        for task_id in range(n_tasks):
+            if tasks_dist[task_id]>0:
+                sampled_classes.append(class_samplers[task_id].sample(tasks_dist[task_id].view(-1, 1)))
+        sampled_classes = torch.cat(sampled_classes)
+        assert len(sampled_classes) == n_img
 
-    example = generate_images(curr_global_decoder, z, task_ids, sampled_classes)
-    if return_z:
-        return example, sampled_classes, z, task_ids
-    else:
-        return example, sampled_classes
+        example = generate_images(curr_global_decoder, z, task_ids, sampled_classes)
+        if return_z:
+            return example, sampled_classes, z, task_ids
+        else:
+            return example, sampled_classes

@@ -11,7 +11,7 @@ import continual_benchmark.dataloaders.base
 import continual_benchmark.agents as agents
 import continual_benchmark.dataloaders as dataloaders
 from continual_benchmark.dataloaders.datasetGen import SplitGen, PermutedGen, celebaSplit
-from vae_experiments import multiband_training
+from vae_experiments import multiband_training, replay_training
 
 from vae_experiments import training_functions
 from vae_experiments import vae_utils
@@ -63,9 +63,16 @@ def run(args):
     test_fid_table = OrderedDict()
 
     # Prepare VAE
-    local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
-                                      n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
-                                      cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes, device=device).to(device)
+    if args.training_procedure == "multiband":
+        local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
+                                          n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
+                                          cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
+                                          device=device).to(device)
+    elif args.training_procedure == "replay":
+        local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
+                                          n_dim_coding=0, cond_p_coding=args.gen_cond_p_coding,
+                                          cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
+                                          device=device).to(device)
 
     print(local_vae)
     class_table = torch.zeros(n_tasks, n_classes, dtype=torch.long)
@@ -96,14 +103,23 @@ def run(args):
         print("Train local VAE model")
         train_dataset_loader = train_loaders[task_id]
 
-        curr_global_decoder = multiband_training.train_multiband(args=args, models_definition=models_definition,
-                                                                 local_vae=local_vae,
-                                                                 curr_global_decoder=curr_global_decoder,
-                                                                 task_id=task_id,
-                                                                 train_dataset_loader=train_dataset_loader,
-                                                                 class_table=class_table, n_classes=n_classes,
-                                                                 device=device
-                                                                 )
+        if args.training_procedure == "multiband":
+            curr_global_decoder = multiband_training.train_multiband(args=args, models_definition=models_definition,
+                                                                     local_vae=local_vae,
+                                                                     curr_global_decoder=curr_global_decoder,
+                                                                     task_id=task_id,
+                                                                     train_dataset_loader=train_dataset_loader,
+                                                                     class_table=class_table, n_classes=n_classes,
+                                                                     device=device
+                                                                     )
+        elif args.training_procedure == "replay":
+            curr_global_decoder, tmp_table = replay_training.train_with_replay(args=args, local_vae=local_vae,
+                                                                    task_loader=train_dataset_loader,
+                                                                    task_id=task_id, class_table=class_table)
+            class_table[task_id] = tmp_table
+        else:
+            print("Wrong training procedure")
+            return None
 
         # Plotting results for already learned tasks
         if not args.gen_load_pretrained_models:
@@ -146,7 +162,8 @@ def get_args(argv):
                         help="Compute FID on validation dataset instead of validation dataset")
     parser.add_argument('--val_batch_size', type=int, default=250)
     parser.add_argument('--skip_validation', default=False, action='store_true')
-    parser.add_argument('--training_procedure', type=str, default='multiband', help='Training procedure multiband|replay')
+    parser.add_argument('--training_procedure', type=str, default='multiband',
+                        help='Training procedure multiband|replay')
 
     # Data
     parser.add_argument('--dataroot', type=str, default='data', help="The root folder of dataset or downloaded data")

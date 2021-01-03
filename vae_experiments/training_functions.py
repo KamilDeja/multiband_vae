@@ -8,10 +8,10 @@ from vae_experiments.lap_loss import LapLoss
 from vae_experiments.vae_utils import *
 import copy
 
-
+mse_loss = nn.MSELoss(reduction="sum")
 def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
-    marginal_likelihood = F.binary_cross_entropy(y, x_target, reduction='sum') / y.size(0)
     # marginal_likelihood = F.binary_cross_entropy(y, x_target, reduction='sum') / y.size(0)
+    marginal_likelihood = mse_loss(y, x_target) / y.size(0)
     # KL_divergence = 0.5 * torch.sum(
     #     torch.pow(mu, 2) +
     #     torch.pow(sigma, 2) -

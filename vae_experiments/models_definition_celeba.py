@@ -44,7 +44,7 @@ class VAE(nn.Module):
         if task_id != None:
             task_ids = np.zeros([batch_size, 1]) + task_id
         else:
-            task_ids = 0
+            task_ids = np.zeros([batch_size, 1])
         recon_x = self.decoder(z, task_ids, conds)
 
         return recon_x, means, log_var, z
