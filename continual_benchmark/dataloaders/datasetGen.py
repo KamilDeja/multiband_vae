@@ -58,16 +58,16 @@ def celebaSplit(dataset, num_batches=5, num_classes=10):
     attr = dataset.attr
     if num_classes == 10:
         class_split = {
-            0: [8, 20],
+            0: [8, 20], # Black hair
             1: [8, -20],
-            2: [11, 20],
+            2: [11, 20], # Brown hair
             3: [11, -20],
-            4: [35, 20],
+            4: [35, 20], #hat man
             5: [35, -20],
-            6: [9, 20],
+            6: [9, 20], # Blond hair
             7: [9, -20],
-            8: [17],
-            9: [4]
+            8: [17], # gray
+            9: [4] # bold
         }
     else:
         raise NotImplementedError
@@ -104,10 +104,7 @@ def celebaSplit(dataset, num_batches=5, num_classes=10):
     for task in batch_split:
         split = batch_split[task]
         batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)] = task  # class_indices in split
-        # indices[attr[:, split].prod(1).bool()] = task
-        # val_indices[val_attr[:, split].prod(1).bool()] = task
 
-    ### @TODO split to different classes
     dataset.attr = class_indices.view(-1, 1).long()
 
     train_dataset_splits = {}

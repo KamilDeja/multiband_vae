@@ -12,12 +12,12 @@ import copy
 def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
     marginal_likelihood = F.binary_cross_entropy(y, x_target, reduction='sum') / y.size(0)
 
-    KL_divergence = 0.5 * torch.sum(
-        torch.pow(mu, 2) +
-        torch.pow(sigma, 2) -
-        torch.log(1e-8 + torch.pow(sigma, 2)) - 1
-    ).sum() / y.size(0)
-
+    # KL_divergence = 0.5 * torch.sum(
+    #     torch.pow(mu, 2) +
+    #     torch.pow(sigma, 2) -
+    #     torch.log(1e-8 + torch.pow(sigma, 2)) - 1
+    # ).sum() / y.size(0)
+    KL_divergence = -0.5 * torch.sum(1 + sigma - mu.pow(2) - sigma.exp()) / y.size(0)
     if lap_loss_fn:
         lap_loss = lap_loss_fn(y, x_target)
         loss = marginal_likelihood + x_target[0].size()[1] * x_target[0].size()[1] * lap_loss + KL_divergence
@@ -28,8 +28,8 @@ def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
 
 
 def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100, use_lap_loss=False):
-    optimizer = torch.optim.RMSprop(local_vae.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.95)
+    optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.001)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     table_tmp = torch.zeros(n_classes, dtype=torch.long)
     lap_loss = LapLoss(device=local_vae.device) if use_lap_loss else None
 
@@ -54,16 +54,16 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
         scheduler.step()
         #     print("lr:",scheduler.get_lr())
         #     print(iteration,len(task_loader))
-        if epoch % 10 == 0:
+        if epoch % 1 == 0:
             print("Epoch: {}/{}, loss: {}".format(epoch, n_epochs, np.mean(losses)))
-    return (table_tmp)
+    return table_tmp
 
 
 def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n_epochs=100, n_iterations=30,
                          batch_size=1000):
     global_decoder = copy.deepcopy(curr_global_decoder)
-    optimizer = torch.optim.RMSprop(global_decoder.parameters(), lr=0.005)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.99)
+    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.001)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     criterion = nn.BCELoss(reduction='sum')
     class_samplers = prepare_class_samplres(task_id + 1, class_table)
 
@@ -99,6 +99,6 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
             losses.append(loss.item())
         scheduler.step()
         #     print("lr:",scheduler.get_lr())
-        if (epoch % 10 == 0):
+        if (epoch % 1 == 0):
             print("Epoch: {}/{}, loss: {}".format(epoch, n_epochs, np.mean(losses)))
     return global_decoder

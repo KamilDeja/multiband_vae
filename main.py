@@ -11,6 +11,7 @@ import continual_benchmark.dataloaders.base
 import continual_benchmark.agents as agents
 import continual_benchmark.dataloaders as dataloaders
 from continual_benchmark.dataloaders.datasetGen import SplitGen, PermutedGen, celebaSplit
+from vae_experiments import multiband_training
 
 from vae_experiments import training_functions
 from vae_experiments import vae_utils
@@ -63,7 +64,8 @@ def run(args):
 
     # Prepare VAE
     local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
-                                      n_dim_coding=args.gen_n_dim_coding, cond_dim=n_classes, device=device).to(device)
+                                      n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_p_coding,
+                                      cond_n_dim_coding=args.gen_n_dim_coding, cond_dim=n_classes, device=device).to(device)
 
     print(local_vae)
     class_table = torch.zeros(n_tasks, n_classes, dtype=torch.long)
@@ -85,7 +87,7 @@ def run(args):
                           stats_file_name=
                           f"seed_{args.seed}_f_split_{args.first_split_size}_split_{args.other_split_size}_val_{args.score_on_val}",
                           score_model_device=device, dataloaders=val_loaders)
-
+    curr_global_decoder = None
     for task_id in range(len(task_names)):
         print("######### Task number {} #########".format(task_id))
         task_name = task_names[task_id]
@@ -94,36 +96,14 @@ def run(args):
         print("Train local VAE model")
         train_dataset_loader = train_loaders[task_id]
 
-        if args.gen_load_pretrained_models:
-            local_vae.load_state_dict(torch.load(args.gen_pretrained_models_dir + f'model{task_id}_local_vae'))
-        else:
-            tmp_table = training_functions.train_local_generator(local_vae, task_loader=train_dataset_loader,
-                                                                 task_id=task_id, n_classes=n_classes,
-                                                                 n_epochs=args.gen_ae_epochs)
-            class_table[task_id] = tmp_table
-        print("Done training local VAE model")
-
-        if not task_id:
-            # First task, initializing global decoder as local_vae's decoder
-            curr_global_decoder = copy.deepcopy(local_vae.decoder)
-        else:
-            print("Train global VAE model")
-            # Retraining global decoder with previous global decoder and local_vae
-            if args.gen_load_pretrained_models:
-                curr_global_decoder = models_definition.Decoder(latent_size=local_vae.latent_size, d=args.gen_d,
-                                                                p_coding=local_vae.p_coding,
-                                                                n_dim_coding=local_vae.n_dim_coding,
-                                                                cond_dim=n_classes, device=local_vae.device).to(device)
-                curr_global_decoder.load_state_dict(
-                    torch.load(args.gen_pretrained_models_dir + f'model{task_id}_curr_decoder'))
-            else:
-                curr_global_decoder = training_functions.train_global_decoder(curr_global_decoder=curr_global_decoder,
-                                                                              local_vae=local_vae,
-                                                                              task_id=task_id, class_table=class_table,
-                                                                              n_iterations=len(train_dataset_loader),
-                                                                              n_epochs=args.global_dec_epochs,
-                                                                              batch_size=args.gen_batch_size)
-            torch.cuda.empty_cache()
+        curr_global_decoder = multiband_training.train_multiband(args=args, models_definition=models_definition,
+                                                                 local_vae=local_vae,
+                                                                 curr_global_decoder=curr_global_decoder,
+                                                                 task_id=task_id,
+                                                                 train_dataset_loader=train_dataset_loader,
+                                                                 class_table=class_table, n_classes=n_classes,
+                                                                 device=device
+                                                                 )
 
         # Plotting results for already learned tasks
         if not args.gen_load_pretrained_models:
@@ -167,7 +147,6 @@ def get_args(argv):
     parser.add_argument('--val_batch_size', type=int, default=250)
     parser.add_argument('--skip_validation', default=False, action='store_true')
 
-
     # Data
     parser.add_argument('--dataroot', type=str, default='data', help="The root folder of dataset or downloaded data")
     parser.add_argument('--dataset', type=str, default='MNIST', help="MNIST(default)|CelebA")
@@ -193,7 +172,8 @@ def get_args(argv):
                         help="Prime number used to calculated codes in binary autoencoder")
     parser.add_argument('--gen_latent_size', type=int, default=10, help="Latent size in binary autoencoder")
     parser.add_argument('--gen_d', type=int, default=8, help="Size of binary autoencoder")
-    parser.add_argument('--gen_ae_epochs', type=int, default=20, help="Number of epochs to train local variational autoencoder")
+    parser.add_argument('--gen_ae_epochs', type=int, default=20,
+                        help="Number of epochs to train local variational autoencoder")
     parser.add_argument('--global_dec_epochs', type=int, default=20, help="Number of epochs to train global decoder")
     parser.add_argument('--gen_load_pretrained_models', default=False, help="Load pretrained generative models")
     parser.add_argument('--gen_pretrained_models_dir', type=str, default="results/pretrained_models",
