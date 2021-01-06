@@ -31,7 +31,8 @@ def run(args):
         n_classes = 10
         n_batches = n_classes // args.other_split_size
         train_dataset_splits, val_dataset_splits, task_output_space = celebaSplit(train_dataset, num_batches=n_batches,
-                                                                                  num_classes=n_classes)
+                                                                                  num_classes=n_classes,
+                                                                                  random_split=args.random_split)
         from vae_experiments import models_definition_celeba as models_definition
     else:
         from vae_experiments import models_definition_mnist as models_definition
@@ -92,7 +93,7 @@ def run(args):
 
     validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
                           stats_file_name=
-                          f"seed_{args.seed}_f_split_{args.first_split_size}_split_{args.other_split_size}_val_{args.score_on_val}",
+                          f"seed_{args.seed}_f_split_{args.first_split_size}_split_{args.other_split_size}_val_{args.score_on_val}_{args.random_split}",
                           score_model_device=device, dataloaders=val_loaders)
     curr_global_decoder = None
     for task_id in range(len(task_names)):
@@ -114,8 +115,8 @@ def run(args):
                                                                      )
         elif args.training_procedure == "replay":
             curr_global_decoder, tmp_table = replay_training.train_with_replay(args=args, local_vae=local_vae,
-                                                                    task_loader=train_dataset_loader,
-                                                                    task_id=task_id, class_table=class_table)
+                                                                               task_loader=train_dataset_loader,
+                                                                               task_id=task_id, class_table=class_table)
             class_table[task_id] = tmp_table
         else:
             print("Wrong training procedure")
@@ -175,6 +176,8 @@ def get_args(argv):
                         help="Randomize the classes in splits")
     parser.add_argument('--rand_split_order', dest='rand_split_order', default=False, action='store_true',
                         help="Randomize the order of splits")
+    parser.add_argument('--random_split', dest='random_split', default=False, action='store_true',
+                        help="Randomize data in splits")
     parser.add_argument('--no_class_remap', dest='no_class_remap', default=False, action='store_true',
                         help="Avoid the dataset with a subset of classes doing the remapping. Ex: [2,5,6 ...] -> [0,1,2 ...]")
     parser.add_argument('--skip_normalization', action='store_true', help='Loads dataset without normalization')

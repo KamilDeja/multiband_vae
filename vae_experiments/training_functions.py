@@ -12,11 +12,7 @@ mse_loss = nn.MSELoss(reduction="sum")
 def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
     # marginal_likelihood = F.binary_cross_entropy(y, x_target, reduction='sum') / y.size(0)
     marginal_likelihood = mse_loss(y, x_target) / y.size(0)
-    # KL_divergence = 0.5 * torch.sum(
-    #     torch.pow(mu, 2) +
-    #     torch.pow(sigma, 2) -
-    #     torch.log(1e-8 + torch.pow(sigma, 2)) - 1
-    # ).sum() / y.size(0)
+
     KL_divergence = -0.5 * torch.sum(1 + sigma - mu.pow(2) - sigma.exp()) / y.size(0)
     if lap_loss_fn:
         lap_loss = lap_loss_fn(y, x_target)
@@ -28,6 +24,8 @@ def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
 
 
 def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100, use_lap_loss=False):
+    local_vae.train()
+    local_vae.translator.eval()
     optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     table_tmp = torch.zeros(n_classes, dtype=torch.long)
@@ -38,7 +36,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
         for iteration, batch in enumerate(task_loader):
 
             x = batch[0].to(local_vae.device)
-            y = batch[1].to(local_vae.device)
+            y = batch[1]#.to(local_vae.device)
             recon_x, mean, log_var, z = local_vae(x, task_id, y)
 
             loss = loss_fn(recon_x, x, mean, log_var, lap_loss)
@@ -62,11 +60,15 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
 def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n_epochs=100, n_iterations=30,
                          batch_size=1000):
     global_decoder = copy.deepcopy(curr_global_decoder)
+    global_decoder.eval()
+    local_vae.eval()
+    curr_global_decoder.train()
+    local_vae.translator.train()
     optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     criterion = nn.MSELoss(reduction='sum')
     class_samplers = prepare_class_samplres(task_id + 1, class_table)
-    task_ids_local = np.zeros([batch_size]) + task_id
+    task_ids_local = torch.zeros([batch_size]) + task_id
 
     for epoch in range(n_epochs):
         losses = []
@@ -85,7 +87,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
                 recon_local = local_vae.decoder(z_local, task_ids_local, sampled_classes_local)
 
             z_concat = torch.cat([z_prev, z_local])
-            task_ids_concat = np.concatenate([task_ids_prev, task_ids_local]).reshape(-1, 1)
+            task_ids_concat = torch.cat([task_ids_prev, task_ids_local])#.view(-1, 1)
             recon_concat = torch.cat([recon_prev, recon_local])
 
             global_recon = global_decoder(z_concat, task_ids_concat, torch.cat([classes_prev, sampled_classes_local]))

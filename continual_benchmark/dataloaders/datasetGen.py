@@ -54,20 +54,21 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
     return train_dataset_splits, val_dataset_splits, task_output_space
 
 
-def celebaSplit(dataset, num_batches=5, num_classes=10):
+def celebaSplit(dataset, num_batches=5, num_classes=10, random_split=False):
     attr = dataset.attr
+
     if num_classes == 10:
         class_split = {
-            0: [8, 20], # Black hair
+            0: [8, 20],  # Black hair
             1: [8, -20],
-            2: [11, 20], # Brown hair
+            2: [11, 20],  # Brown hair
             3: [11, -20],
-            4: [35, 20], #hat man
+            4: [35, 20],  # hat man
             5: [35, -20],
-            6: [9, 20], # Blond hair
+            6: [9, 20],  # Blond hair
             7: [9, -20],
-            8: [17], # gray
-            9: [4] # bold
+            8: [17],  # gray
+            9: [4]  # bold
         }
     else:
         raise NotImplementedError
@@ -100,10 +101,19 @@ def celebaSplit(dataset, num_batches=5, num_classes=10):
         class_indices[tmp_indices.bool()] = class_id
 
     # val_indices = torch.zeros(len(train_dataset)) - 1
-    batch_indices = torch.zeros(len(dataset)) - 1
-    for task in batch_split:
-        split = batch_split[task]
-        batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)] = task  # class_indices in split
+    batch_indices = (torch.zeros(len(dataset)) - 1)
+    if random_split:
+        # batch_indices += (torch.rand_like(batch_indices) * num_batches).long()
+        # to include only selected classes
+        for task in batch_split:
+            split = batch_split[task]
+            batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)] = (torch.rand_like(
+                batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)]) * num_batches)
+        batch_indices = batch_indices.long()
+    else:
+        for task in batch_split:
+            split = batch_split[task]
+            batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)] = task  # class_indices in split
 
     dataset.attr = class_indices.view(-1, 1).long()
 

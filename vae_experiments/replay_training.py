@@ -2,14 +2,18 @@ import copy
 import numpy as np
 import torch
 import torch.functional as F
+from torch import optim
+
 from vae_experiments.vae_utils import generate_previous_data
 from vae_experiments.training_functions import loss_fn
 
 
 def train_with_replay(args, local_vae, task_loader, task_id, class_table):
     optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.001)
-    # scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.95)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     frozen_model = copy.deepcopy(local_vae.decoder)
+    frozen_model.eval()
+    local_vae.train()
     table_tmp = torch.zeros(class_table.size(1), dtype=torch.long)
 
     for epoch in range(args.gen_ae_epochs):
@@ -37,7 +41,7 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
             optimizer.step()
 
             losses.append(loss.item())
-        #     scheduler.step()
+        scheduler.step()
         #     print("lr:",scheduler.get_lr())
         if (epoch % 10 == 0):
             print("Epoch: {}/{}, loss: {}".format(epoch, args.gen_ae_epochs, np.mean(losses)))

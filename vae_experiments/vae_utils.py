@@ -21,6 +21,7 @@ def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_i
     curr_global_decoder.eval()
     z = torch.randn([n_img * (n_tasks + 1), curr_global_decoder.latent_size]).to(curr_global_decoder.device)
     task_ids = np.repeat(list(range(n_tasks + 1)), n_img)
+    task_ids = torch.from_numpy(task_ids).float()
     class_samplers = prepare_class_samplres(n_tasks + 1, class_table)
 
     sampled_classes = []
@@ -71,7 +72,7 @@ def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, sam
         for task_id in range(n_tasks):
             if tasks_dist[task_id] > 0:
                 task_ids.append([task_id] * tasks_dist[task_id])
-        task_ids = np.concatenate(task_ids)  # np.repeat(list(range(n_tasks)), n_img)
+        task_ids = torch.from_numpy(np.concatenate(task_ids)).float()
         assert len(task_ids) == n_img
 
         class_samplers = prepare_class_samplres(n_tasks, curr_class_table)

@@ -37,6 +37,7 @@ class Validator:
             self.score_model_func = lambda batch: model(batch)[0]
 
     def compute_fid(self, curr_global_decoder, class_table, task_id):
+        curr_global_decoder.eval()
         class_table = class_table[:task_id + 1]
         test_loader = self.dataloaders[task_id]
         with torch.no_grad():
@@ -60,7 +61,7 @@ class Validator:
             print("Calculating FID:")
             for idx, batch in enumerate(test_loader):
                 x = batch[0].to(self.device)
-                y = batch[1].to(self.device)
+                y = batch[1]
                 z = torch.randn([len(y), curr_global_decoder.latent_size]).to(self.device)
                 tasks_sampled = []
                 y = y.sort()[0]
@@ -69,14 +70,14 @@ class Validator:
                     tasks_sampled.append(task_samplers[i].sample([n_occ]))
                 #     task_ids = np.repeat(list(range(n_tasks)),batch_size//n_tasks)
                 task_ids = torch.cat(tasks_sampled)
-                example = generate_images(curr_global_decoder, z, task_ids.cpu().numpy(), y)
+                example = generate_images(curr_global_decoder, z, task_ids, y)
                 if not precalculated_statistics:
                     distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
-                distribution_gen.append(self.score_model_func(example).cpu().detach().numpy())
+                distribution_gen.append(self.score_model_func(example))  # .cpu().detach().numpy())
                 # class_gen.append(np.argmax(net(example).cpu().detach().numpy(), 1))
                 # conds.append(y.detach().numpy())
-
-            distribution_gen = np.array(np.concatenate(distribution_gen)).reshape(-1, self.dims)
+            distribution_gen = torch.cat(distribution_gen).cpu().detach().numpy().reshape(-1, self.dims)
+            # distribution_gen = np.array(np.concatenate(distribution_gen)).reshape(-1, self.dims)
             if not precalculated_statistics:
                 distribution_orig = np.array(np.concatenate(distribution_orig)).reshape(-1, self.dims)
                 np.save(stats_file_path, distribution_orig)
