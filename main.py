@@ -72,7 +72,7 @@ def run(args):
     elif args.training_procedure == "replay":
         local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
                                           n_dim_coding=0, cond_p_coding=args.gen_cond_p_coding,
-                                          cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
+                                          cond_n_dim_coding=args, cond_dim=n_classes,
                                           device=device).to(device)
 
     print(local_vae)

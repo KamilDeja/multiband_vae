@@ -14,7 +14,7 @@ def one_hot_conditionals(y, device, cond_dim):
 def unpackbits(x, num_bits):
     with torch.no_grad():
         if num_bits == 0:
-            return np.array([])
+            return torch.Tensor([])
         x = x.view(-1, 1).long()
         mask = 2 ** (num_bits - 1 - torch.arange(num_bits).view([1, num_bits])).long()
         return (x & mask).bool().float()
@@ -30,7 +30,7 @@ class VAE(nn.Module):
         self.device = device
 
         self.encoder = Encoder(latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device)
-        self.translator = Translator(n_dim_coding, p_coding, device)  # latent_size, device)
+        self.translator = Translator(n_dim_coding, p_coding, latent_size, device)
         self.decoder = Decoder(latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding, cond_dim,
                                self.translator, device)
 
@@ -113,7 +113,7 @@ class Decoder(nn.Module):
         self.latent_size = latent_size
         self.translator = translator
 
-        self.fc1 = nn.Linear(latent_size + cond_n_dim_coding + n_dim_coding, self.d * 4)
+        self.fc1 = nn.Linear(latent_size + cond_n_dim_coding, self.d * 4)
         self.fc2 = nn.Linear(self.d * 4, self.d * 8)
         self.fc3 = nn.Linear(self.d * 8, self.d * 8 * 8 * 8)
         self.dc1 = nn.ConvTranspose2d(self.d * 8, self.d * 4, kernel_size=5, stride=2,
@@ -141,8 +141,10 @@ class Decoder(nn.Module):
                 self.device)  # one_hot_conditionals(conds, self.device, self.cond_dim)
         if translate_noise:
             # task_id = torch.cat([x, task_id.to(self.device)], dim=1)
-            task_ids_enc = self.translator(x, task_id)
+            task_ids_enc = self.translator(task_id)
             x = x * task_ids_enc
+        # x = torch.cat([x, conds_coded], dim=1)
+        # task_ids_enc = self.translator(task_id)
         x = torch.cat([x, conds_coded], dim=1)
         x = F.leaky_relu(self.fc1(x))
         x = F.leaky_relu(self.fc2(x))
@@ -168,17 +170,38 @@ class Decoder(nn.Module):
         return x
 
 
+class Translator(nn.Module):
+    def __init__(self, n_dim_coding, p_coding, latent_size, device):
+        super().__init__()
+        self.n_dim_coding = n_dim_coding
+        self.p_coding = p_coding
+        self.device = device
+        # self.latent_size = latent_size
+
+        self.fc1 = nn.Linear(n_dim_coding, n_dim_coding * 4)
+        self.fc2 = nn.Linear(n_dim_coding * 4, latent_size * 2 // 3)
+        self.fc3 = nn.Linear(latent_size * 2 // 3, latent_size)
+
+    def forward(self, task_id):
+        codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
+        task_ids = unpackbits(codes, self.n_dim_coding).to(self.device)
+        # x = torch.cat([x, task_ids], dim=1)
+        x = torch.sigmoid(self.fc1(task_ids))
+        x = torch.sigmoid(self.fc2(x))
+        x = torch.sigmoid(self.fc3(x))
+        return x
+
 # class Translator(nn.Module):
-#     def __init__(self, n_dim_coding, p_coding, latent_size, device):
+#     def __init__(self, n_dim_coding, p_coding, device):
 #         super().__init__()
 #         self.n_dim_coding = n_dim_coding
 #         self.p_coding = p_coding
 #         self.device = device
 #         # self.latent_size = latent_size
 #
-#         self.fc1 = nn.Linear(n_dim_coding, n_dim_coding * 4)
-#         self.fc2 = nn.Linear(n_dim_coding * 4, latent_size * 2 // 3)
-#         self.fc3 = nn.Linear(latent_size * 2 // 3, latent_size)
+#         self.fc1 = nn.Linear(n_dim_coding, n_dim_coding * 2)
+#         self.fc2 = nn.Linear(n_dim_coding * 2, n_dim_coding * 3)
+#         self.fc3 = nn.Linear(n_dim_coding * 3, n_dim_coding)
 #
 #     def forward(self, task_id):
 #         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
@@ -188,24 +211,3 @@ class Decoder(nn.Module):
 #         x = torch.sigmoid(self.fc2(x))
 #         x = torch.sigmoid(self.fc3(x))
 #         return x
-
-class Translator(nn.Module):
-    def __init__(self, n_dim_coding, p_coding, device):
-        super().__init__()
-        self.n_dim_coding = n_dim_coding
-        self.p_coding = p_coding
-        self.device = device
-        # self.latent_size = latent_size
-
-        self.fc1 = nn.Linear(n_dim_coding, n_dim_coding * 2)
-        self.fc2 = nn.Linear(n_dim_coding * 2, n_dim_coding * 3)
-        self.fc3 = nn.Linear(n_dim_coding * 3, n_dim_coding)
-
-    def forward(self, task_id):
-        codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
-        x = unpackbits(codes, self.n_dim_coding).to(self.device)
-        # x = torch.cat([x, task_ids], dim=1)
-        x = torch.sigmoid(self.fc1(x))
-        x = torch.sigmoid(self.fc2(x))
-        x = torch.sigmoid(self.fc3(x))
-        return x
