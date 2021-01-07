@@ -30,11 +30,11 @@ class VAE(nn.Module):
         self.device = device
 
         self.encoder = Encoder(latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device)
-        self.translator = Translator(n_dim_coding, device)
+        self.translator = Translator(n_dim_coding, p_coding, latent_size, device)
         self.decoder = Decoder(latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding, cond_dim,
                                self.translator, device)
 
-    def forward(self, x, task_id, conds):
+    def forward(self, x, task_id, conds, translate_noise=True):
         batch_size = x.size(0)
         means, log_var = self.encoder(x, conds)
 
@@ -45,16 +45,9 @@ class VAE(nn.Module):
             task_ids = torch.zeros([batch_size, 1]) + task_id
         else:
             task_ids = torch.zeros([batch_size, 1])
-        recon_x = self.decoder(z, task_ids, conds)
+        recon_x = self.decoder(z, task_ids, conds, translate_noise=translate_noise)
 
         return recon_x, means, log_var, z
-
-    def inference(self, n=1, task_id=0):
-        batch_size = n
-        z = torch.randn([batch_size, self.latent_size]).to(self.device)
-        recon_x = self.decoder(z, task_id)
-
-        return recon_x
 
 
 class Encoder(nn.Module):
@@ -120,7 +113,7 @@ class Decoder(nn.Module):
         self.latent_size = latent_size
         self.translator = translator
 
-        self.fc1 = nn.Linear(latent_size + n_dim_coding + cond_n_dim_coding, self.d * 4)
+        self.fc1 = nn.Linear(latent_size + cond_n_dim_coding, self.d * 4)
         self.fc2 = nn.Linear(self.d * 4, self.d * 8)
         self.fc3 = nn.Linear(self.d * 8, self.d * 8 * 8 * 8)
         self.dc1 = nn.ConvTranspose2d(self.d * 8, self.d * 4, kernel_size=5, stride=2,
@@ -138,18 +131,18 @@ class Decoder(nn.Module):
         self.dc_out = nn.ConvTranspose2d(self.d, 3, kernel_size=5, stride=1,
                                          padding=2, output_padding=0, bias=False)
 
-    def forward(self, x, task_id, conds):
+    def forward(self, x, task_id, conds, return_emb=False, translate_noise=True):
         with torch.no_grad():
-            codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
-            task_ids = unpackbits(codes, self.n_dim_coding).to(self.device)
             # torch.from_numpy(
             # np.unpackbits(codes.astype(np.uint8).reshape(-1, 1), axis=1)[:, -self.n_dim_coding:].astype(np.float32)).to(
             # self.device)
             conds_coded = (conds * self.cond_p_coding) % (2 ** self.cond_n_dim_coding)
             conds_coded = unpackbits(conds_coded, self.cond_n_dim_coding).to(
                 self.device)  # one_hot_conditionals(conds, self.device, self.cond_dim)
-        task_ids = self.translator(task_ids)
-        x = torch.cat([x, task_ids, conds_coded], dim=1)
+        if translate_noise:
+            task_ids_enc = self.translator(task_id)
+            x = x * task_ids_enc
+        x = torch.cat([x, conds_coded], dim=1)
         x = F.leaky_relu(self.fc1(x))
         x = F.leaky_relu(self.fc2(x))
         x = F.leaky_relu(self.fc3(x))
@@ -169,16 +162,27 @@ class Decoder(nn.Module):
         #         x = self.dc5(x)
         #         x = F.leaky_relu(self.dc5_bn(x))
         x = torch.sigmoid(self.dc_out(x))
+        if return_emb:
+            return x, task_ids_enc
         return x
 
 
 class Translator(nn.Module):
-    def __init__(self, n_dim_coding, device):
+    def __init__(self, n_dim_coding, p_coding, latent_size, device):
         super().__init__()
         self.n_dim_coding = n_dim_coding
+        self.p_coding = p_coding
+        self.device = device
+        self.latent_size = latent_size
 
-        self.fc1 = nn.Linear(n_dim_coding, n_dim_coding)
+        self.fc1 = nn.Linear(n_dim_coding, n_dim_coding * 4)
+        self.fc2 = nn.Linear(n_dim_coding * 4, latent_size * 2 // 3)
+        self.fc3 = nn.Linear(latent_size * 2 // 3, latent_size)
 
-    def forward(self, x):
+    def forward(self, task_id):
+        codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
+        x = unpackbits(codes, self.n_dim_coding).to(self.device)
         x = torch.sigmoid(self.fc1(x))
+        x = torch.sigmoid(self.fc2(x))
+        x = torch.sigmoid(self.fc3(x))
         return x

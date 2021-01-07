@@ -46,9 +46,13 @@ def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_i
     plt.close()
 
 
-def generate_images(curr_global_decoder, z, task_ids, y):
-    example = curr_global_decoder(z, task_ids, y)
-    return example
+def generate_images(curr_global_decoder, z, task_ids, y, return_emb=False):
+    if return_emb:
+        example, emb = curr_global_decoder(z, task_ids, y, return_emb=return_emb)
+        return example, emb
+    else:
+        example = curr_global_decoder(z, task_ids, y, return_emb=return_emb)
+        return example
 
 
 def generate_noise_for_previous_data(n_img, n_task, latent_size, same_z=False):
@@ -60,7 +64,7 @@ def generate_noise_for_previous_data(n_img, n_task, latent_size, same_z=False):
     return z
 
 
-def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, same_z=False, return_z = False):
+def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, same_z=False, return_z=False):
     with torch.no_grad():
         curr_class_table = class_table[:n_tasks]
         z = generate_noise_for_previous_data(n_img, n_tasks, curr_global_decoder.latent_size, same_z).to(
@@ -79,13 +83,14 @@ def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, sam
 
         sampled_classes = []
         for task_id in range(n_tasks):
-            if tasks_dist[task_id]>0:
+            if tasks_dist[task_id] > 0:
                 sampled_classes.append(class_samplers[task_id].sample(tasks_dist[task_id].view(-1, 1)))
         sampled_classes = torch.cat(sampled_classes)
         assert len(sampled_classes) == n_img
 
-        example = generate_images(curr_global_decoder, z, task_ids, sampled_classes)
         if return_z:
-            return example, sampled_classes, z, task_ids
+            example, embeddings = generate_images(curr_global_decoder, z, task_ids, sampled_classes, True)
+            return example, sampled_classes, z, task_ids, embeddings
         else:
+            example = generate_images(curr_global_decoder, z, task_ids, sampled_classes)
             return example, sampled_classes

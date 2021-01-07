@@ -9,6 +9,8 @@ from vae_experiments.vae_utils import *
 import copy
 
 mse_loss = nn.MSELoss(reduction="sum")
+
+
 def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
     # marginal_likelihood = F.binary_cross_entropy(y, x_target, reduction='sum') / y.size(0)
     marginal_likelihood = mse_loss(y, x_target) / y.size(0)
@@ -25,7 +27,10 @@ def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
 
 def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100, use_lap_loss=False):
     local_vae.train()
-    local_vae.translator.eval()
+    if task_id == 0:
+        translate_noise = True
+    else:
+        translate_noise = False
     optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     table_tmp = torch.zeros(n_classes, dtype=torch.long)
@@ -36,8 +41,8 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
         for iteration, batch in enumerate(task_loader):
 
             x = batch[0].to(local_vae.device)
-            y = batch[1]#.to(local_vae.device)
-            recon_x, mean, log_var, z = local_vae(x, task_id, y)
+            y = batch[1]  # .to(local_vae.device)
+            recon_x, mean, log_var, z = local_vae(x, task_id, y, translate_noise=translate_noise)
 
             loss = loss_fn(recon_x, x, mean, log_var, lap_loss)
 
@@ -60,13 +65,17 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
 def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n_epochs=100, n_iterations=30,
                          batch_size=1000):
     global_decoder = copy.deepcopy(curr_global_decoder)
-    global_decoder.eval()
+    curr_global_decoder.eval()
+    curr_global_decoder.translator.eval()
     local_vae.eval()
-    curr_global_decoder.train()
-    local_vae.translator.train()
+    global_decoder.train()
+    # local_vae.translator.train()
+    # frozen_translator = copy.deepcopy(curr_global_decoder.translator)
+    # frozen_translator.eval()
     optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     criterion = nn.MSELoss(reduction='sum')
+    embedding_loss_criterion = nn.MSELoss(reduction='sum')
     class_samplers = prepare_class_samplres(task_id + 1, class_table)
     task_ids_local = torch.zeros([batch_size]) + task_id
 
@@ -74,11 +83,12 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
         losses = []
         for iteration in range(n_iterations):
             # Building dataset from previous global model and local model
-            recon_prev, classes_prev, z_prev, task_ids_prev = generate_previous_data(curr_global_decoder,
-                                                                                     class_table=class_table,
-                                                                                     n_tasks=task_id,
-                                                                                     n_img=batch_size * task_id,
-                                                                                     return_z=True)
+            recon_prev, classes_prev, z_prev, task_ids_prev, embeddings_prev = generate_previous_data(
+                curr_global_decoder,
+                class_table=class_table,
+                n_tasks=task_id,
+                n_img=batch_size * task_id,
+                return_z=True)
 
             with torch.no_grad():
                 # @TODO Check if training with same random variables for both local and previous global model works better
@@ -87,11 +97,14 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
                 recon_local = local_vae.decoder(z_local, task_ids_local, sampled_classes_local)
 
             z_concat = torch.cat([z_prev, z_local])
-            task_ids_concat = torch.cat([task_ids_prev, task_ids_local])#.view(-1, 1)
+            task_ids_concat = torch.cat([task_ids_prev, task_ids_local])  # .view(-1, 1)
             recon_concat = torch.cat([recon_prev, recon_local])
 
             global_recon = global_decoder(z_concat, task_ids_concat, torch.cat([classes_prev, sampled_classes_local]))
             loss = criterion(global_recon, recon_concat)
+            new_previous_embeddings = global_decoder.translator(task_ids_prev)
+            embedding_loss = embedding_loss_criterion(new_previous_embeddings, embeddings_prev)
+            loss += embedding_loss
 
             optimizer.zero_grad()
             loss.backward()

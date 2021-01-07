@@ -5,8 +5,8 @@ import copy
 
 def train_multiband(args, models_definition, local_vae, curr_global_decoder, task_id, train_dataset_loader, class_table,
                     n_classes, device):
-    if task_id > 0:
-        local_vae.decoder = copy.deepcopy(curr_global_decoder)
+    # if task_id > 0:
+    #     local_vae.decoder = copy.deepcopy(curr_global_decoder)
     if args.gen_load_pretrained_models:
         local_vae.load_state_dict(torch.load(args.gen_pretrained_models_dir + f'model{task_id}_local_vae'))
     else:
