@@ -125,7 +125,8 @@ def run(args):
         # Plotting results for already learned tasks
         if not args.gen_load_pretrained_models:
             vae_utils.plot_results(args.experiment_name, curr_global_decoder, class_table, task_id)
-            vae_utils.plot_results(args.experiment_name, local_vae.decoder, class_table, task_id, suffix="_local_vae")
+            vae_utils.plot_results(args.experiment_name, local_vae.decoder, class_table, task_id,
+                                   translate_noise=task_id == 0, suffix="_local_vae")
             torch.save(curr_global_decoder.state_dict(), f"results/{args.experiment_name}/model{task_id}_curr_decoder")
             torch.save(local_vae.state_dict(), f"results/{args.experiment_name}/model{task_id}_local_vae")
 
@@ -144,7 +145,6 @@ def run(args):
                                                    task_id=j)
                 fid_table[j][task_name] = fid_result
                 print(f"FID task {j}: {fid_result}")
-
     return fid_table, task_names, test_fid_table
 
 

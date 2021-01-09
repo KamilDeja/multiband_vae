@@ -36,7 +36,7 @@ class Validator:
             model.eval()
             self.score_model_func = lambda batch: model(batch)[0]
 
-    def compute_fid(self, curr_global_decoder, class_table, task_id):
+    def compute_fid(self, curr_global_decoder, class_table, task_id, translate_noise=True):
         curr_global_decoder.eval()
         class_table = class_table[:task_id + 1]
         test_loader = self.dataloaders[task_id]
@@ -70,7 +70,7 @@ class Validator:
                     tasks_sampled.append(task_samplers[i].sample([n_occ]))
                 #     task_ids = np.repeat(list(range(n_tasks)),batch_size//n_tasks)
                 task_ids = torch.cat(tasks_sampled)
-                example = generate_images(curr_global_decoder, z, task_ids, y)
+                example = generate_images(curr_global_decoder, z, task_ids, y, translate_noise=translate_noise)
                 if not precalculated_statistics:
                     distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
                 distribution_gen.append(self.score_model_func(example))  # .cpu().detach().numpy())

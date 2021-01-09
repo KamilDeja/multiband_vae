@@ -17,7 +17,7 @@ def prepare_class_samplres(task_id, class_table):
     return class_samplers
 
 
-def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_img=5, suffix=""):
+def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_img=5, translate_noise=True, suffix=""):
     curr_global_decoder.eval()
     z = torch.randn([n_img * (n_tasks + 1), curr_global_decoder.latent_size]).to(curr_global_decoder.device)
     task_ids = np.repeat(list(range(n_tasks + 1)), n_img)
@@ -28,7 +28,7 @@ def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_i
     for i in range(n_tasks + 1):  ## Including current class
         sampled_classes.append(class_samplers[i].sample([n_img]))
     sampled_classes = torch.cat(sampled_classes)
-    example = generate_images(curr_global_decoder, z, task_ids, sampled_classes)
+    example = generate_images(curr_global_decoder, z, task_ids, sampled_classes, translate_noise=translate_noise)
     example = example.cpu().detach().numpy()
     fig = plt.figure(figsize=(10., 10.))
     grid = ImageGrid(fig, 111,
@@ -46,12 +46,12 @@ def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_i
     plt.close()
 
 
-def generate_images(curr_global_decoder, z, task_ids, y, return_emb=False):
+def generate_images(curr_global_decoder, z, task_ids, y, return_emb=False, translate_noise=True):
     if return_emb:
-        example, emb = curr_global_decoder(z, task_ids, y, return_emb=return_emb)
+        example, emb = curr_global_decoder(z, task_ids, y, return_emb=return_emb, translate_noise=translate_noise)
         return example, emb
     else:
-        example = curr_global_decoder(z, task_ids, y, return_emb=return_emb)
+        example = curr_global_decoder(z, task_ids, y, return_emb=return_emb, translate_noise=translate_noise)
         return example
 
 
@@ -64,7 +64,7 @@ def generate_noise_for_previous_data(n_img, n_task, latent_size, same_z=False):
     return z
 
 
-def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, same_z=False, return_z=False):
+def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, translate_noise=True, same_z=False, return_z=False):
     with torch.no_grad():
         curr_class_table = class_table[:n_tasks]
         z = generate_noise_for_previous_data(n_img, n_tasks, curr_global_decoder.latent_size, same_z).to(
@@ -89,7 +89,7 @@ def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, sam
         assert len(sampled_classes) == n_img
 
         if return_z:
-            example, embeddings = generate_images(curr_global_decoder, z, task_ids, sampled_classes, True)
+            example, embeddings = generate_images(curr_global_decoder, z, task_ids, sampled_classes, return_emb=True)
             return example, sampled_classes, z, task_ids, embeddings
         else:
             example = generate_images(curr_global_decoder, z, task_ids, sampled_classes)

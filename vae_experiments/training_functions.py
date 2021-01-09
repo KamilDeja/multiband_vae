@@ -27,10 +27,10 @@ def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
 
 def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100, use_lap_loss=False):
     local_vae.train()
-    if task_id == 0:
-        translate_noise = True
-    else:
-        translate_noise = False
+    # if task_id == 0:
+    #     translate_noise = False
+    # else:
+    translate_noise = False
     optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     table_tmp = torch.zeros(n_classes, dtype=torch.long)
@@ -94,7 +94,8 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
                 # @TODO Check if training with same random variables for both local and previous global model works better
                 sampled_classes_local = class_samplers[-1].sample([batch_size])
                 z_local = torch.randn([batch_size, local_vae.latent_size]).to(curr_global_decoder.device)
-                recon_local = local_vae.decoder(z_local, task_ids_local, sampled_classes_local)
+                recon_local = local_vae.decoder(z_local, task_ids_local, sampled_classes_local,
+                                                translate_noise=task_id == 0)
 
             z_concat = torch.cat([z_prev, z_local])
             task_ids_concat = torch.cat([task_ids_prev, task_ids_local])  # .view(-1, 1)
@@ -102,9 +103,11 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
 
             global_recon = global_decoder(z_concat, task_ids_concat, torch.cat([classes_prev, sampled_classes_local]))
             loss = criterion(global_recon, recon_concat)
-            new_previous_embeddings = global_decoder.translator(task_ids_prev)
-            embedding_loss = embedding_loss_criterion(new_previous_embeddings, embeddings_prev)
-            loss += embedding_loss
+            new_matrix, new_bias = global_decoder.translator(task_ids_prev)  # z_prev
+            prev_matrix, prev_bias = embeddings_prev
+            embedding_loss = embedding_loss_criterion(new_matrix, prev_matrix)
+            embedding_loss_bias = embedding_loss_criterion(new_bias, prev_bias)
+            loss = loss + embedding_loss + embedding_loss_bias
 
             optimizer.zero_grad()
             loss.backward()
@@ -115,4 +118,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
         #     print("lr:",scheduler.get_lr())
         if (epoch % 1 == 0):
             print("Epoch: {}/{}, loss: {}".format(epoch, n_epochs, np.mean(losses)))
+
+    local_vae.translator = copy.deepcopy(global_decoder.translator)
+    #@TODO check if this works better
     return global_decoder
