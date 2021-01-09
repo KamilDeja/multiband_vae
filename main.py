@@ -142,7 +142,7 @@ def run(args):
                 val_name = task_names[j]
                 print('validation split name:', val_name)
                 fid_result = validator.compute_fid(curr_global_decoder=curr_global_decoder, class_table=class_table,
-                                                   task_id=j)
+                                                   task_id=j, translate_noise=task_id != 0)
                 fid_table[j][task_name] = fid_result
                 print(f"FID task {j}: {fid_result}")
     return fid_table, task_names, test_fid_table

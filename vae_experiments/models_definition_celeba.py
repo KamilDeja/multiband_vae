@@ -145,6 +145,7 @@ class Decoder(nn.Module):
             task_ids_enc_resized, bias = self.translator(task_id)
             x = torch.bmm(task_ids_enc_resized, x.unsqueeze(-1)).squeeze(2)
         else:
+            task_ids_enc_resized = None
             bias = self.bias_mockup.repeat([x.size(0), 1])
         # x = torch.cat([x, conds_coded], dim=1)
         # task_ids_enc = self.translator(task_id)
@@ -169,7 +170,7 @@ class Decoder(nn.Module):
         #         x = F.leaky_relu(self.dc5_bn(x))
         x = torch.sigmoid(self.dc_out(x))
         if return_emb:
-            return x, (matrix, bias)
+            return x, (task_ids_enc_resized, bias)
         return x
 
 
@@ -179,7 +180,7 @@ class Translator(nn.Module):
         self.n_dim_coding = n_dim_coding
         self.p_coding = p_coding
         self.device = device
-        # self.latent_size = latent_size
+        self.latent_size = latent_size
 
         self.fc1 = nn.Linear(n_dim_coding, latent_size)
         self.fc2 = nn.Linear(latent_size, latent_size * n_dim_coding)

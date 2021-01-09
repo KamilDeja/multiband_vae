@@ -63,7 +63,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
 
 
 def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n_epochs=100, n_iterations=30,
-                         batch_size=1000):
+                         batch_size=1000, train_same_z=False):
     global_decoder = copy.deepcopy(curr_global_decoder)
     curr_global_decoder.eval()
     curr_global_decoder.translator.eval()
@@ -88,26 +88,33 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
                 class_table=class_table,
                 n_tasks=task_id,
                 n_img=batch_size * task_id,
-                return_z=True)
+                return_z=True,
+                translate_noise=task_id != 1,  # Do not translate noise when generating data from 0-task in the 1st task
+                same_z=train_same_z)
+
+            if train_same_z:
+                z_prev, z_max = z_prev
+                z_local = z_max[:batch_size]
 
             with torch.no_grad():
-                # @TODO Check if training with same random variables for both local and previous global model works better
                 sampled_classes_local = class_samplers[-1].sample([batch_size])
-                z_local = torch.randn([batch_size, local_vae.latent_size]).to(curr_global_decoder.device)
+                if not train_same_z:
+                    z_local = torch.randn([batch_size, local_vae.latent_size]).to(curr_global_decoder.device)
                 recon_local = local_vae.decoder(z_local, task_ids_local, sampled_classes_local,
-                                                translate_noise=task_id == 0)
+                                                translate_noise=False)
 
             z_concat = torch.cat([z_prev, z_local])
-            task_ids_concat = torch.cat([task_ids_prev, task_ids_local])  # .view(-1, 1)
+            task_ids_concat = torch.cat([task_ids_prev, task_ids_local])
             recon_concat = torch.cat([recon_prev, recon_local])
 
             global_recon = global_decoder(z_concat, task_ids_concat, torch.cat([classes_prev, sampled_classes_local]))
             loss = criterion(global_recon, recon_concat)
-            new_matrix, new_bias = global_decoder.translator(task_ids_prev)  # z_prev
-            prev_matrix, prev_bias = embeddings_prev
-            embedding_loss = embedding_loss_criterion(new_matrix, prev_matrix)
-            embedding_loss_bias = embedding_loss_criterion(new_bias, prev_bias)
-            loss = loss + embedding_loss + embedding_loss_bias
+            if task_id > 1:
+                new_matrix, new_bias = global_decoder.translator(task_ids_prev)  # z_prev
+                prev_matrix, prev_bias = embeddings_prev
+                embedding_loss = embedding_loss_criterion(new_matrix, prev_matrix)
+                embedding_loss_bias = embedding_loss_criterion(new_bias, prev_bias)
+                loss = loss + embedding_loss + embedding_loss_bias
 
             optimizer.zero_grad()
             loss.backward()
@@ -119,6 +126,5 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
         if (epoch % 1 == 0):
             print("Epoch: {}/{}, loss: {}".format(epoch, n_epochs, np.mean(losses)))
 
-    local_vae.translator = copy.deepcopy(global_decoder.translator)
-    #@TODO check if this works better
+    # local_vae.translator = copy.deepcopy(global_decoder.translator)
     return global_decoder

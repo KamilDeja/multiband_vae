@@ -17,9 +17,14 @@ def prepare_class_samplres(task_id, class_table):
     return class_samplers
 
 
-def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_img=5, translate_noise=True, suffix=""):
+def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_img=5, same_z=False,
+                 translate_noise=True, suffix=""):
     curr_global_decoder.eval()
-    z = torch.randn([n_img * (n_tasks + 1), curr_global_decoder.latent_size]).to(curr_global_decoder.device)
+    if same_z:
+        z = torch.randn([n_img, curr_global_decoder.latent_size]).repeat([n_tasks + 1, 1]).to(
+            curr_global_decoder.device)
+    else:
+        z = torch.randn([n_img * (n_tasks + 1), curr_global_decoder.latent_size]).to(curr_global_decoder.device)
     task_ids = np.repeat(list(range(n_tasks + 1)), n_img)
     task_ids = torch.from_numpy(task_ids).float()
     class_samplers = prepare_class_samplres(n_tasks + 1, class_table)
@@ -55,20 +60,24 @@ def generate_images(curr_global_decoder, z, task_ids, y, return_emb=False, trans
         return example
 
 
-def generate_noise_for_previous_data(n_img, n_task, latent_size, same_z=False):
+def generate_noise_for_previous_data(n_img, n_task, latent_size, tasks_dist, device, same_z=False):
     if same_z:
-        z = torch.randn([n_img // (n_task + 1), latent_size]).repeat([n_task + 1])
-        raise NotImplementedError  # Check first if it works
+        z_max = torch.randn([max(tasks_dist), latent_size]).to(device)
+        z = []
+        for n_img in tasks_dist:
+            z.append(z_max[:n_img])
+        z = torch.cat(z)
+        return z, z_max
+        # z = torch.randn([n_img // (n_task + 1), latent_size]).repeat([n_task + 1, 1])
     else:
-        z = torch.randn([n_img, latent_size])
-    return z
+        z = torch.randn([n_img, latent_size]).to(device)
+        return z
 
 
-def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, translate_noise=True, same_z=False, return_z=False):
+def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, translate_noise=True, same_z=False,
+                           return_z=False):
     with torch.no_grad():
         curr_class_table = class_table[:n_tasks]
-        z = generate_noise_for_previous_data(n_img, n_tasks, curr_global_decoder.latent_size, same_z).to(
-            curr_global_decoder.device)
         tasks_dist = torch.sum(curr_class_table, dim=1) * n_img // torch.sum(curr_class_table)
         tasks_dist[0:n_img - tasks_dist.sum()] += 1  # To fix the division
         assert sum(tasks_dist) == n_img
@@ -88,9 +97,21 @@ def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, tra
         sampled_classes = torch.cat(sampled_classes)
         assert len(sampled_classes) == n_img
 
-        if return_z:
-            example, embeddings = generate_images(curr_global_decoder, z, task_ids, sampled_classes, return_emb=True)
-            return example, sampled_classes, z, task_ids, embeddings
+        z_combined = generate_noise_for_previous_data(n_img, n_tasks, curr_global_decoder.latent_size, tasks_dist,
+                                                      device=curr_global_decoder.device, same_z=same_z)
+
+        if same_z:
+            z, _ = z_combined
+            # z = z.to(curr_global_decoder.device)
         else:
-            example = generate_images(curr_global_decoder, z, task_ids, sampled_classes)
+            # z_combined.to(curr_global_decoder.device)
+            z = z_combined
+
+        if return_z:
+            example, embeddings = generate_images(curr_global_decoder, z, task_ids, sampled_classes, return_emb=True,
+                                                  translate_noise=translate_noise)
+            return example, sampled_classes, z_combined, task_ids, embeddings
+        else:
+            example = generate_images(curr_global_decoder, z, task_ids, sampled_classes,
+                                      translate_noise=translate_noise)
             return example, sampled_classes
