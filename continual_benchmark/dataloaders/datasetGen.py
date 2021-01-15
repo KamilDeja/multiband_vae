@@ -7,7 +7,7 @@ from torch.utils.data import Subset
 from .wrapper import Subclass, AppendName, Permutation
 
 
-def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, rand_split=False, remap_class=False):
+def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, rand_split=False, remap_class=True):
     '''
     Generate the dataset splits based on the labels.
     :param train_dataset: (torch.utils.data.dataset)
@@ -32,12 +32,12 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
     # Assign classes to each splits
     # Create the dict: {split_name1:[2,6,7], split_name2:[0,3,9], ...}
     if not rand_split:
-        class_lists = {str(i): list(range(split_boundaries[i - 1], split_boundaries[i])) for i in
-                       range(1, len(split_boundaries))}
+        class_lists = {i: list(range(split_boundaries[i], split_boundaries[i + 1])) for i in
+                       range(len(split_boundaries) - 1)}
     else:
         randseq = torch.randperm(num_classes)
-        class_lists = {str(i): randseq[list(range(split_boundaries[i - 1], split_boundaries[i]))].tolist() for i in
-                       range(1, len(split_boundaries))}
+        class_lists = {i: randseq[list(range(split_boundaries[i], split_boundaries[i + 1]))].tolist() for i in
+                       range(len(split_boundaries) - 1)}
     print(class_lists)
 
     # Generate the dicts of splits
@@ -54,7 +54,7 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
     return train_dataset_splits, val_dataset_splits, task_output_space
 
 
-def celebaSplit(dataset, num_batches=5, num_classes=10, random_split=False):
+def celebaSplit(dataset, num_batches=5, num_classes=10, random_split=False, random_mini_shuffle=False):
     attr = dataset.attr
 
     if num_classes == 10:
@@ -101,7 +101,7 @@ def celebaSplit(dataset, num_batches=5, num_classes=10, random_split=False):
         class_indices[tmp_indices.bool()] = class_id
 
     # val_indices = torch.zeros(len(train_dataset)) - 1
-    batch_indices = (torch.zeros(len(dataset)) - 1)
+    batch_indices = (torch.zeros(len(dataset)) - 2)
     if random_split:
         # batch_indices += (torch.rand_like(batch_indices) * num_batches).long()
         # to include only selected classes
@@ -115,6 +115,12 @@ def celebaSplit(dataset, num_batches=5, num_classes=10, random_split=False):
             split = batch_split[task]
             batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)] = task  # class_indices in split
 
+    if random_mini_shuffle:
+        shuffle_size = int(0.5 * len(batch_indices))
+        selected_batch_indices = batch_indices[batch_indices >= 0]
+        selected_batch_indices[:shuffle_size] = (selected_batch_indices[:shuffle_size] + 1) % num_batches
+        batch_indices[
+            batch_indices >= 0] = selected_batch_indices  # = (batch_indices[batch_indices >= 0][:shuffle_size] + 1) % num_batches
     dataset.attr = class_indices.view(-1, 1).long()
 
     train_dataset_splits = {}

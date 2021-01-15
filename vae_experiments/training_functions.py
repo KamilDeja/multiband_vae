@@ -109,12 +109,12 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n
 
             global_recon = global_decoder(z_concat, task_ids_concat, torch.cat([classes_prev, sampled_classes_local]))
             loss = criterion(global_recon, recon_concat)
-            if task_id > 1:
-                new_matrix, new_bias = global_decoder.translator(task_ids_prev)  # z_prev
-                prev_matrix, prev_bias = embeddings_prev
-                embedding_loss = embedding_loss_criterion(new_matrix, prev_matrix)
-                embedding_loss_bias = embedding_loss_criterion(new_bias, prev_bias)
-                loss = loss + embedding_loss + embedding_loss_bias
+            # if (not local_vae.standarde_embeddings) and (task_id > 1):
+            #     new_matrix, new_bias = global_decoder.translator(task_ids_prev)  # z_prev
+            #     prev_matrix, prev_bias = embeddings_prev
+            #     embedding_loss = embedding_loss_criterion(new_matrix, prev_matrix)
+            #     embedding_loss_bias = embedding_loss_criterion(new_bias, prev_bias)
+            #     loss = loss + embedding_loss + embedding_loss_bias
 
             optimizer.zero_grad()
             loss.backward()

@@ -28,11 +28,12 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
 
             if task_id > 0:
                 recon_prev, recon_classes = generate_previous_data(frozen_model, class_table=class_table,
-                                                                   n_tasks=task_id, n_img=task_id * x.size(0))
+                                                                   n_tasks=task_id, n_img=task_id * x.size(0),
+                                                                   translate_noise=False)
                 x = torch.cat([x, recon_prev], dim=0)
                 y = torch.cat([y.view(-1), recon_classes.to(local_vae.device)], dim=0)
 
-            recon_x, mean, log_var, z = local_vae(x, task_id, y)
+            recon_x, mean, log_var, z = local_vae(x, task_id, y, translate_noise=False)
 
             loss = loss_fn(recon_x, x, mean, log_var)
 

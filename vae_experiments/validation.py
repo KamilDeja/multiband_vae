@@ -20,8 +20,8 @@ class Validator:
         if dataset == "MNIST":
             from vae_experiments.evaluation_models.lenet import Model
             net = Model()
-            model_dir = "lenet"
-            net.load_state_dict(torch.load(model_dir))
+            model_path = "vae_experiments/evaluation_models/lenet"
+            net.load_state_dict(torch.load(model_path))
             net.to(device)
             net.eval()
             self.dims = 84

@@ -32,10 +32,10 @@ def run(args):
         n_batches = n_classes // args.other_split_size
         train_dataset_splits, val_dataset_splits, task_output_space = celebaSplit(train_dataset, num_batches=n_batches,
                                                                                   num_classes=n_classes,
-                                                                                  random_split=args.random_split)
-        from vae_experiments import models_definition_celeba as models_definition
+                                                                                  random_split=args.random_split,
+                                                                                  random_mini_shuffle=args.random_shuffle)
     else:
-        from vae_experiments import models_definition_mnist as models_definition
+        # from vae_experiments import models_definition_mnist as models_definition
         train_dataset_splits, val_dataset_splits, task_output_space = SplitGen(train_dataset, val_dataset,
                                                                                first_split_sz=args.first_split_size,
                                                                                other_split_sz=args.other_split_size,
@@ -43,6 +43,10 @@ def run(args):
                                                                                remap_class=not args.no_class_remap)
         n_classes = train_dataset.number_classes
 
+    if args.training_procedure == "replay":
+        from vae_experiments import models_definition_celeba_replay as models_definition
+    else:
+        from vae_experiments import models_definition_celeba as models_definition
     # Calculate constants
 
     labels_tasks = {}
@@ -68,11 +72,12 @@ def run(args):
         local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
                                           n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
                                           cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
-                                          device=device).to(device)
+                                          device=device, standard_embeddings=args.standard_embeddings,
+                                          in_size=train_dataset[0][0].size()[1]).to(device)
     elif args.training_procedure == "replay":
         local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
-                                          n_dim_coding=0, cond_p_coding=args.gen_cond_p_coding,
-                                          cond_n_dim_coding=args, cond_dim=n_classes,
+                                          n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
+                                          cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
                                           device=device).to(device)
 
     print(local_vae)
@@ -124,9 +129,9 @@ def run(args):
 
         # Plotting results for already learned tasks
         if not args.gen_load_pretrained_models:
-            vae_utils.plot_results(args.experiment_name, curr_global_decoder, class_table, task_id)
+            vae_utils.plot_results(args.experiment_name, curr_global_decoder, class_table, task_id, same_z=True)
             vae_utils.plot_results(args.experiment_name, local_vae.decoder, class_table, task_id,
-                                   translate_noise=task_id == 0, suffix="_local_vae")
+                                   translate_noise=task_id == 0, suffix="_local_vae", same_z=True)
             torch.save(curr_global_decoder.state_dict(), f"results/{args.experiment_name}/model{task_id}_curr_decoder")
             torch.save(local_vae.state_dict(), f"results/{args.experiment_name}/model{task_id}_local_vae")
 
@@ -178,6 +183,8 @@ def get_args(argv):
                         help="Randomize the order of splits")
     parser.add_argument('--random_split', dest='random_split', default=False, action='store_true',
                         help="Randomize data in splits")
+    parser.add_argument('--random_shuffle', dest='random_shuffle', default=False, action='store_true',
+                        help="Move part of data to next batch")
     parser.add_argument('--no_class_remap', dest='no_class_remap', default=False, action='store_true',
                         help="Avoid the dataset with a subset of classes doing the remapping. Ex: [2,5,6 ...] -> [0,1,2 ...]")
     parser.add_argument('--skip_normalization', action='store_true', help='Loads dataset without normalization')
@@ -203,6 +210,8 @@ def get_args(argv):
     parser.add_argument('--gen_load_pretrained_models', default=False, help="Load pretrained generative models")
     parser.add_argument('--gen_pretrained_models_dir', type=str, default="results/pretrained_models",
                         help="Directory of pretrained generative models")
+    parser.add_argument('--standard_embeddings', dest='standard_embeddings', default=False, action='store_true',
+                        help="Train multiband with standard embeddings instead of matrix")
 
     args = parser.parse_args(argv)
 
