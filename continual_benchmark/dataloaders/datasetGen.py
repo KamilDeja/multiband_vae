@@ -7,7 +7,8 @@ from torch.utils.data import Subset
 from .wrapper import Subclass, AppendName, Permutation
 
 
-def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, rand_split=False, remap_class=True):
+def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, rand_split=False, remap_class=True,
+             random_split=False):
     '''
     Generate the dataset splits based on the labels.
     :param train_dataset: (torch.utils.data.dataset)
@@ -46,32 +47,62 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
     val_dataset_splits = {}
     task_output_space = {}
 
-    for name, class_list in class_lists.items():
-        train_dataset_splits[name] = AppendName(Subclass(train_dataset, class_list, remap_class), name)
-        val_dataset_splits[name] = AppendName(Subclass(val_dataset, class_list, remap_class), name)
-        task_output_space[name] = len(class_list)
+    if random_split:
+        batch_indices = (torch.rand(len(train_dataset)) * len(split_boundaries)).long()
+        batch_indices = batch_indices.long()
+        dataset_len = len(train_dataset)
+        train_set_len = int(dataset_len * 0.8)
+        train_indices = batch_indices[:train_set_len]
+        val_indices = batch_indices[train_set_len:]
+
+        for name, _ in class_lists.items():
+            train_subset = Subset(train_dataset, torch.where(train_indices == name)[0])
+            # train_subset.labels = train_class_indices[train_indices == name]  # torch.ones(len(train_subset), 1) * name
+            # train_subset.attr = train_subset.labels
+            train_subset.class_list = range(train_dataset.number_classes)
+
+            val_subset = Subset(train_dataset, train_set_len + torch.where(val_indices == name)[0])
+            # val_subset.labels = val_class_indices[val_indices == name]  # torch.ones(len(val_subset), 1) * name
+            val_subset.class_list = range(train_dataset.number_classes)
+            # val_subset.attr = val_subset.labels
+
+            train_dataset_splits[name] = AppendName(train_subset, name)
+            val_dataset_splits[name] = AppendName(val_subset, name)
+            task_output_space[name] = (batch_indices == name).sum()
+    else:
+        for name, class_list in class_lists.items():
+            train_dataset_splits[name] = AppendName(Subclass(train_dataset, class_list, remap_class), name)
+            val_dataset_splits[name] = AppendName(Subclass(val_dataset, class_list, remap_class), name)
+            task_output_space[name] = len(class_list)
 
     return train_dataset_splits, val_dataset_splits, task_output_space
 
 
-def celebaSplit(dataset, num_batches=5, num_classes=10, random_split=False, random_mini_shuffle=False):
-    attr = dataset.attr
+def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_split=False, random_mini_shuffle=False):
+    if dataset_name.lower() == "celeba":
+        attr = dataset.attr
 
-    if num_classes == 10:
-        class_split = {
-            0: [8, 20],  # Black hair
-            1: [8, -20],
-            2: [11, 20],  # Brown hair
-            3: [11, -20],
-            4: [35, 20],  # hat man
-            5: [35, -20],
-            6: [9, 20],  # Blond hair
-            7: [9, -20],
-            8: [17],  # gray
-            9: [4]  # bold
-        }
+        if num_classes == 10:
+            class_split = {
+                0: [8, 20],  # Black hair
+                1: [8, -20],
+                2: [11, 20],  # Brown hair
+                3: [11, -20],
+                4: [35, 20],  # hat man
+                5: [35, -20],
+                6: [9, 20],  # Blond hair
+                7: [9, -20],
+                8: [17],  # gray
+                9: [4]  # bold
+            }
+        else:
+            raise NotImplementedError
     else:
-        raise NotImplementedError
+        split_boundaries = [0, num_classes//num_batches]
+        while split_boundaries[-1] < num_classes:
+            split_boundaries.append(split_boundaries[-1] + num_classes//num_batches)
+        class_split = {i: list(range(split_boundaries[i], split_boundaries[i + 1])) for i in
+                       range(len(split_boundaries) - 1)}
 
     if num_batches == 5:
         batch_split = {
@@ -90,16 +121,21 @@ def celebaSplit(dataset, num_batches=5, num_classes=10, random_split=False, rand
 
     class_indices = torch.zeros(len(dataset)) - 1
 
-    for class_id in class_split:
-        tmp_attr = class_split[class_id]
-        tmp_indices = torch.ones(len(dataset))
-        for i in tmp_attr:
-            if i > 0:
-                tmp_indices = tmp_indices * attr[:, i]
-            else:
-                tmp_indices = tmp_indices * (1 - attr[:, -i])
-        class_indices[tmp_indices.bool()] = class_id
+    if dataset_name.lower() == "celeba":
+        for class_id in class_split:
+            tmp_attr = class_split[class_id]
+            tmp_indices = torch.ones(len(dataset))
+            for i in tmp_attr:
+                if i > 0:
+                    tmp_indices = tmp_indices * attr[:, i]
+                else:
+                    tmp_indices = tmp_indices * (1 - attr[:, -i])
+            class_indices[tmp_indices.bool()] = class_id
+    else:
+        class_indices = torch.LongTensor(dataset.labels)
 
+    if num_batches == 1:
+        class_indices = (class_indices - class_indices % 2) // 2  # To have the same classes as batch indices in normal setup
     # val_indices = torch.zeros(len(train_dataset)) - 1
     batch_indices = (torch.zeros(len(dataset)) - 2)
     if random_split:
@@ -136,12 +172,14 @@ def celebaSplit(dataset, num_batches=5, num_classes=10, random_split=False, rand
 
     for name in batch_split:
         train_subset = Subset(dataset, torch.where(train_indices == name)[0])
-        train_subset.labels = train_class_indices[train_indices == name]  # torch.ones(len(train_subset), 1) * name
+        if dataset_name.lower() == "celeba":
+            train_subset.labels = train_class_indices[train_indices == name]  # torch.ones(len(train_subset), 1) * name
         # train_subset.attr = train_subset.labels
         train_subset.class_list = batch_split[name]
 
         val_subset = Subset(dataset, train_set_len + torch.where(val_indices == name)[0])
-        val_subset.labels = val_class_indices[val_indices == name]  # torch.ones(len(val_subset), 1) * name
+        if dataset_name.lower() == "celeba":
+            val_subset.labels = val_class_indices[val_indices == name]  # torch.ones(len(val_subset), 1) * name
         val_subset.class_list = batch_split[name]
         # val_subset.attr = val_subset.labels
 

@@ -62,9 +62,25 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
     return table_tmp
 
 
-def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table, n_epochs=100, n_iterations=30,
-                         batch_size=1000, train_same_z=False):
-    global_decoder = copy.deepcopy(curr_global_decoder)
+def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
+                         models_definition, n_epochs=100, n_iterations=30, batch_size=1000, train_same_z=False,
+                         new_global_decoder=False):
+    if new_global_decoder:
+        global_decoder = models_definition.Decoder(latent_size=curr_global_decoder.latent_size, d=curr_global_decoder.d,
+                                                   p_coding=curr_global_decoder.p_coding,
+                                                   n_dim_coding=curr_global_decoder.n_dim_coding,
+                                                   cond_p_coding=curr_global_decoder.cond_p_coding,
+                                                   cond_n_dim_coding=curr_global_decoder.cond_n_dim_coding,
+                                                   cond_dim=curr_global_decoder.cond_dim,
+                                                   device=curr_global_decoder.device,
+                                                   translator=models_definition.Translator(
+                                                       curr_global_decoder.n_dim_coding, curr_global_decoder.p_coding,
+                                                       curr_global_decoder.latent_size, curr_global_decoder.device),
+                                                   standard_embeddings=curr_global_decoder.standard_embeddings,
+                                                   in_size=curr_global_decoder.in_size
+                                                   ).to(curr_global_decoder.device)
+    else:
+        global_decoder = copy.deepcopy(curr_global_decoder)
     curr_global_decoder.eval()
     curr_global_decoder.translator.eval()
     local_vae.eval()

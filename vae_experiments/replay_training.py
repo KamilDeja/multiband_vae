@@ -15,7 +15,7 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
     frozen_model.eval()
     local_vae.train()
     table_tmp = torch.zeros(class_table.size(1), dtype=torch.long)
-
+    task_ids = task_id
     for epoch in range(args.gen_ae_epochs):
         losses = []
         for iteration, batch in enumerate(task_loader):
@@ -27,13 +27,19 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
                 table_tmp[class_counter[0]] += class_counter[1].cpu()
 
             if task_id > 0:
-                recon_prev, recon_classes = generate_previous_data(frozen_model, class_table=class_table,
-                                                                   n_tasks=task_id, n_img=task_id * x.size(0),
-                                                                   translate_noise=False)
+                recon_prev, recon_classes, _, task_ids_prev, _ = generate_previous_data(frozen_model,
+                                                                                        class_table=class_table,
+                                                                                        n_tasks=task_id,
+                                                                                        n_img=task_id * x.size(
+                                                                                            0),
+                                                                                        translate_noise=False,
+                                                                                        return_z=True)
                 x = torch.cat([x, recon_prev], dim=0)
+                task_ids = torch.cat(
+                    [torch.zeros_like(y).to(local_vae.device) + task_id, task_ids_prev.to(local_vae.device)], dim=0)
                 y = torch.cat([y.view(-1), recon_classes.to(local_vae.device)], dim=0)
 
-            recon_x, mean, log_var, z = local_vae(x, task_id, y, translate_noise=False)
+            recon_x, mean, log_var, z = local_vae(x, task_ids, y, translate_noise=False)
 
             loss = loss_fn(recon_x, x, mean, log_var)
 

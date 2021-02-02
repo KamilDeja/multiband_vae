@@ -38,7 +38,8 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
                                                                           n_iterations=len(train_dataset_loader),
                                                                           n_epochs=args.global_dec_epochs,
                                                                           batch_size=args.gen_batch_size,
-                                                                          train_same_z=True)
+                                                                          train_same_z=True,
+                                                                          models_definition=models_definition)
         torch.cuda.empty_cache()
 
     return curr_global_decoder

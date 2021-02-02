@@ -192,12 +192,12 @@ class Decoder(nn.Module):
             # task_id = torch.cat([x, task_id.to(self.device)], dim=1)
             task_ids_enc_resized, bias = self.translator(task_id)
             x = torch.bmm(task_ids_enc_resized, x.unsqueeze(-1)).squeeze(2) + bias
-
         else:
             task_ids_enc_resized = None
             bias = None
-        # x = torch.cat([x, conds_coded], dim=1)
-        # task_ids_enc = self.translator(task_id)
+            # x = x.repeat([1, 2])
+            # x = F.avg_pool1d(x.unsqueeze(1), 2).squeeze(1)#x[:, :self.latent_size//2]
+
         x = torch.cat([x, conds_coded], dim=1)
         x = F.leaky_relu(self.fc1(x))
         x = F.leaky_relu(self.fc2(x))
@@ -237,6 +237,7 @@ class Translator(nn.Module):
         x = F.leaky_relu(self.fc2(x))
         matrix = self.fc3(x)
         bias = self.fc4(x)
+        # task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)
         task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)
         task_ids_enc_resized = torch.softmax(task_ids_enc_resized, 1)
         return task_ids_enc_resized, bias
@@ -257,6 +258,7 @@ class Translator_embeddings(nn.Module):
     def forward(self, task_id):
         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
         task_ids = unpackbits(codes, self.n_dim_coding).to(self.device)
+        # return task_ids
         # x = torch.cat([x, task_ids], dim=1)
         x = F.leaky_relu(self.fc1(task_ids))
         x = F.leaky_relu(self.fc2(x))

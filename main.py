@@ -10,7 +10,7 @@ from collections import OrderedDict
 import continual_benchmark.dataloaders.base
 import continual_benchmark.agents as agents
 import continual_benchmark.dataloaders as dataloaders
-from continual_benchmark.dataloaders.datasetGen import SplitGen, PermutedGen, celebaSplit
+from continual_benchmark.dataloaders.datasetGen import SplitGen, PermutedGen, data_split
 from vae_experiments import multiband_training, replay_training
 
 from vae_experiments import training_functions
@@ -29,24 +29,29 @@ def run(args):
 
     if args.dataset.lower() == "celeba":
         n_classes = 10
-        n_batches = n_classes // args.other_split_size
-        train_dataset_splits, val_dataset_splits, task_output_space = celebaSplit(train_dataset, num_batches=n_batches,
-                                                                                  num_classes=n_classes,
-                                                                                  random_split=args.random_split,
-                                                                                  random_mini_shuffle=args.random_shuffle)
     else:
-        # from vae_experiments import models_definition_mnist as models_definition
-        train_dataset_splits, val_dataset_splits, task_output_space = SplitGen(train_dataset, val_dataset,
-                                                                               first_split_sz=args.first_split_size,
-                                                                               other_split_sz=args.other_split_size,
-                                                                               rand_split=args.rand_split,
-                                                                               remap_class=not args.no_class_remap)
         n_classes = train_dataset.number_classes
+    n_batches = n_classes // args.other_split_size
+    train_dataset_splits, val_dataset_splits, task_output_space = data_split(dataset=train_dataset,
+                                                                             dataset_name=args.dataset.lower(),
+                                                                             num_batches=n_batches,
+                                                                             num_classes=n_classes,
+                                                                             random_split=args.random_split,
+                                                                             random_mini_shuffle=args.random_shuffle)
+    # else:
+    #     # from vae_experiments import models_definition_mnist as models_definition
+    #     train_dataset_splits, val_dataset_splits, task_output_space = SplitGen(train_dataset, val_dataset,
+    #                                                                            first_split_sz=args.first_split_size,
+    #                                                                            other_split_sz=args.other_split_size,
+    #                                                                            rand_split=args.rand_split,
+    #                                                                            remap_class=not args.no_class_remap,
+    #                                                                            random_split=args.random_split)
+    #
 
     if args.training_procedure == "replay":
-        from vae_experiments import models_definition_celeba_replay as models_definition
+        from vae_experiments import models_definition_replay as models_definition
     else:
-        from vae_experiments import models_definition_celeba as models_definition
+        from vae_experiments import  models_definition
     # Calculate constants
 
     labels_tasks = {}
@@ -78,7 +83,7 @@ def run(args):
         local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
                                           n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
                                           cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
-                                          device=device).to(device)
+                                          device=device, in_size=train_dataset[0][0].size()[1]).to(device)
 
     print(local_vae)
     class_table = torch.zeros(n_tasks, n_classes, dtype=torch.long)
@@ -116,8 +121,7 @@ def run(args):
                                                                      task_id=task_id,
                                                                      train_dataset_loader=train_dataset_loader,
                                                                      class_table=class_table, n_classes=n_classes,
-                                                                     device=device
-                                                                     )
+                                                                     device=device)
         elif args.training_procedure == "replay":
             curr_global_decoder, tmp_table = replay_training.train_with_replay(args=args, local_vae=local_vae,
                                                                                task_loader=train_dataset_loader,
@@ -147,7 +151,7 @@ def run(args):
                 val_name = task_names[j]
                 print('validation split name:', val_name)
                 fid_result = validator.compute_fid(curr_global_decoder=curr_global_decoder, class_table=class_table,
-                                                   task_id=j, translate_noise=task_id != 0)
+                                                   task_id=j, translate_noise=True)  # task_id != 0)
                 fid_table[j][task_name] = fid_result
                 print(f"FID task {j}: {fid_result}")
     return fid_table, task_names, test_fid_table

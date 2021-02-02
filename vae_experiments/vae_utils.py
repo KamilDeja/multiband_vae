@@ -41,11 +41,11 @@ def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_i
                      axes_pad=0.5,
                      )
 
-    for ax, im, target in zip(grid, example, sampled_classes):
+    for ax, im, target in zip(grid, example, task_ids.cpu().detach().numpy()):#sampled_classes):
         im = np.swapaxes(im, 0, 2)
         im = np.swapaxes(im, 0, 1)
         ax.imshow(im.squeeze())
-        ax.set_title('Class: {}'.format(target))
+        ax.set_title('Task id: {}'.format(int(target)))
 
     plt.savefig("results/" + experiment_name + "/generations_task_" + str(n_tasks) + suffix)
     plt.close()
