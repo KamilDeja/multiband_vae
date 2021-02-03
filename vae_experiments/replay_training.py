@@ -34,9 +34,9 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
                                                                                             0),
                                                                                         translate_noise=False,
                                                                                         return_z=True)
-                x = torch.cat([x, recon_prev], dim=0)
                 task_ids = torch.cat(
-                    [torch.zeros_like(y).to(local_vae.device) + task_id, task_ids_prev.to(local_vae.device)], dim=0)
+                    [torch.zeros(x.size(0)).to(local_vae.device) + task_id, task_ids_prev.to(local_vae.device)], dim=0)
+                x = torch.cat([x, recon_prev], dim=0)
                 y = torch.cat([y.view(-1), recon_classes.to(local_vae.device)], dim=0)
 
             recon_x, mean, log_var, z = local_vae(x, task_ids, y, translate_noise=False)
