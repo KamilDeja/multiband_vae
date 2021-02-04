@@ -85,3 +85,32 @@ class Validator:
             # orig_classes = np.array(conds).reshape(-1)
             # generated_classes = np.array(class_gen).reshape(-1)
             return calculate_frechet_distance(distribution_gen, distribution_orig)
+
+    def compute_fid_from_examples(self, args, generations, task_id):
+        distribution_orig = []
+        precalculated_statistics = False
+        stats_file_path = f"results/orig_stats/compare_files_{args.dataset}_{args.experiment_name}_{task_id}.npy"
+        test_loader = self.dataloaders[task_id]
+
+        if os.path.exists(stats_file_path):
+            print(f"Loading cached original data statistics from: {self.stats_file_name}")
+            distribution_orig = np.load(stats_file_path)
+            precalculated_statistics = True
+        print("Calculating FID:")
+        if not precalculated_statistics:
+            for idx, batch in enumerate(test_loader):
+                x = batch[0].to(self.device)
+                distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
+
+        if args.dataset.lower() == "mnist":
+            generations = generations.reshape(-1, 1, 28, 28)
+        elif args.dataset.lower() == "celeba":
+            generations = generations.reshape(-1, 3, 32, 32)
+        generations = torch.from_numpy(generations).to(self.device)
+        distribution_gen = self.score_model_func(generations).cpu().detach().numpy().reshape(-1, self.dims)
+
+        if not precalculated_statistics:
+            distribution_orig = np.array(np.concatenate(distribution_orig)).reshape(-1, self.dims)
+            np.save(stats_file_path, distribution_orig)
+
+        return calculate_frechet_distance(distribution_gen, distribution_orig)

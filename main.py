@@ -51,7 +51,7 @@ def run(args):
     if args.training_procedure == "replay":
         from vae_experiments import models_definition_replay as models_definition
     else:
-        from vae_experiments import  models_definition
+        from vae_experiments import models_definition
     # Calculate constants
 
     labels_tasks = {}
@@ -151,7 +151,7 @@ def run(args):
                 val_name = task_names[j]
                 print('validation split name:', val_name)
                 fid_result = validator.compute_fid(curr_global_decoder=curr_global_decoder, class_table=class_table,
-                                                   task_id=j, translate_noise=True)  # task_id != 0)
+                                                   task_id=j, translate_noise=task_id != 0)
                 fid_table[j][task_name] = fid_result
                 print(f"FID task {j}: {fid_result}")
     return fid_table, task_names, test_fid_table

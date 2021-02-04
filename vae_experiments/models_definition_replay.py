@@ -16,7 +16,7 @@ def unpackbits(x, num_bits):
         if num_bits == 0:
             return torch.Tensor([])
         x = x.view(-1, 1).long()
-        mask = 2 ** (num_bits - 1 - torch.arange(num_bits).view([1, num_bits])).long().to(x.device)
+        mask = 2 ** (num_bits - 1 - torch.arange(num_bits).view([1, num_bits])).long()
         return (x & mask).bool().float()
 
 
