@@ -1,12 +1,29 @@
-import os
-
 from mpl_toolkits.axes_grid1 import ImageGrid
-# from vae_experiments.models_definition import unpackbits
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from vae_experiments.fid import calculate_frechet_distance
 
+
+class BitUnpacker:
+    results_map = {}
+
+    @classmethod
+    def unpackbits(cls, x, num_bits):
+        with torch.no_grad():
+            if num_bits == 0:
+                return torch.Tensor([])
+
+            if num_bits in cls.results_map:
+                mask = cls.results_map[num_bits]
+            else:
+                print("Mask for num_bits={} does not exist, calculating one.".format(num_bits))
+
+                mask = 2 ** (num_bits - 1 - torch.arange(num_bits).view([1, num_bits])).long()
+                cls.results_map[num_bits] = mask
+
+            x = x.view(-1, 1).long()
+
+            return (x & mask).bool().float()
 
 def prepare_class_samplres(task_id, class_table):
     ########### Maybe compute only once and pass to the function?

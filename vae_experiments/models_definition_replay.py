@@ -1,23 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 import numpy as np
+
+from vae_experiments.vae_utils import BitUnpacker
 
 
 def one_hot_conditionals(y, device, cond_dim):
     zero_ar = torch.zeros(y.shape[0], cond_dim)
     zero_ar[np.array(range(y.shape[0])), y] = 1
     return zero_ar.to(device)  # torch.Tensor(zero_ar).type(torch.float).to(device))
-
-
-def unpackbits(x, num_bits):
-    with torch.no_grad():
-        if num_bits == 0:
-            return torch.Tensor([])
-        x = x.view(-1, 1).long()
-        mask = 2 ** (num_bits - 1 - torch.arange(num_bits).view([1, num_bits])).long()
-        return (x & mask).bool().float()
 
 
 class VAE(nn.Module):
@@ -92,9 +84,10 @@ class Encoder(nn.Module):
 
     def forward(self, x, conds):
         with torch.no_grad():
-            conds_coded = (conds * self.cond_p_coding) % (2 ** self.cond_n_dim_coding)
-            conds_coded = unpackbits(conds_coded, self.cond_n_dim_coding).to(self.device)
-        # conds = one_hot_conditionals(conds, self.device, self.cond_dim)
+            if self.cond_n_dim_coding:
+                conds_coded = (conds * self.cond_p_coding) % (2 ** self.cond_n_dim_coding)
+                conds_coded = BitUnpacker.unpackbits(conds_coded, self.cond_n_dim_coding).to(self.device)
+
         x = self.conv1(x)
         x = F.leaky_relu(self.bn_1(x))
         x = self.conv2(x)
@@ -107,7 +100,10 @@ class Encoder(nn.Module):
             x = self.conv4(x)
             x = F.leaky_relu(self.bn_4(x))
             x = x.view([-1, self.d * 4 * 3 * 3])
-        x = torch.cat([x, conds_coded], dim=1)
+
+        if self.cond_n_dim_coding:
+            x = torch.cat([x, conds_coded], dim=1)
+
         x = F.leaky_relu(self.fc(x))
         means = self.linear_means(x)
         log_vars = self.linear_log_var(x)
@@ -163,18 +159,15 @@ class Decoder(nn.Module):
                                              padding=2, output_padding=0, bias=False)
 
     def forward(self, x, task_id, conds, return_emb=False, translate_noise=True):
-        with torch.no_grad():
-            # torch.from_numpy(
-            # np.unpackbits(codes.astype(np.uint8).reshape(-1, 1), axis=1)[:, -self.n_dim_coding:].astype(np.float32)).to(
-            # self.device)
-            conds_coded = (conds * self.cond_p_coding) % (2 ** self.cond_n_dim_coding)
-            conds_coded = unpackbits(conds_coded, self.cond_n_dim_coding).to(
-                self.device)  # one_hot_conditionals(conds, self.device, self.cond_dim)
-            batch_conds_coded = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
-            batch_conds_coded = unpackbits(batch_conds_coded, self.n_dim_coding).to(
-                self.device)
+        if self.cond_n_dim_coding:
+            with torch.no_grad():
+                conds_coded = (conds * self.cond_p_coding) % (2 ** self.cond_n_dim_coding)
+                conds_coded = BitUnpacker.unpackbits(conds_coded, self.cond_n_dim_coding).to(self.device)
+                batch_conds_coded = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
+                batch_conds_coded = BitUnpacker.unpackbits(batch_conds_coded, self.n_dim_coding).to(self.device)
 
-        x = torch.cat([x, conds_coded, batch_conds_coded], dim=1)
+            x = torch.cat([x, conds_coded, batch_conds_coded], dim=1)
+
         x = F.leaky_relu(self.fc1(x))
         x = F.leaky_relu(self.fc2(x))
         x = F.leaky_relu(self.fc3(x))

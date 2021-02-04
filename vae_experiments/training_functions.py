@@ -1,3 +1,4 @@
+import time
 import torch
 import numpy as np
 import torch.nn as nn
@@ -38,6 +39,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
 
     for epoch in range(n_epochs):
         losses = []
+        start = time.time()
         for iteration, batch in enumerate(task_loader):
 
             x = batch[0].to(local_vae.device)
@@ -58,7 +60,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
         #     print("lr:",scheduler.get_lr())
         #     print(iteration,len(task_loader))
         if epoch % 1 == 0:
-            print("Epoch: {}/{}, loss: {}".format(epoch, n_epochs, np.mean(losses)))
+            print("Epoch: {}/{}, loss: {}, took: {} s".format(epoch, n_epochs, np.mean(losses), time.time() - start))
     return table_tmp
 
 
@@ -97,6 +99,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
 
     for epoch in range(n_epochs):
         losses = []
+        start = time.time()
         for iteration in range(n_iterations):
             # Building dataset from previous global model and local model
             recon_prev, classes_prev, z_prev, task_ids_prev, embeddings_prev = generate_previous_data(
@@ -140,7 +143,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
         scheduler.step()
         #     print("lr:",scheduler.get_lr())
         if (epoch % 1 == 0):
-            print("Epoch: {}/{}, loss: {}".format(epoch, n_epochs, np.mean(losses)))
+            print("Epoch: {}/{}, loss: {}, took: {} s".format(epoch, n_epochs, np.mean(losses), time.time() - start))
 
     # local_vae.translator = copy.deepcopy(global_decoder.translator)
     return global_decoder
