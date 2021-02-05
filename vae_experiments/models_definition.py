@@ -23,7 +23,7 @@ def unpackbits(x, num_bits):
 class VAE(nn.Module):
     def __init__(self, latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding, cond_dim,
                  device, in_size,
-                 standard_embeddings=False):  # d defines the number of filters in conv layers of decoder and encoder
+                 standard_embeddings=False, trainable_embeddings = False):  # d defines the number of filters in conv layers of decoder and encoder
         super().__init__()
         self.p_coding = p_coding
         self.n_dim_coding = n_dim_coding
@@ -38,7 +38,8 @@ class VAE(nn.Module):
         else:
             self.translator = Translator(n_dim_coding, p_coding, latent_size, device)
         self.decoder = Decoder(latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding, cond_dim,
-                               self.translator, device, standard_embeddings=standard_embeddings, in_size=in_size)
+                               self.translator, device, standard_embeddings=standard_embeddings,
+                               trainable_embeddings=trainable_embeddings, in_size=in_size)
 
     def forward(self, x, task_id, conds, translate_noise=True):
         batch_size = x.size(0)
@@ -120,7 +121,7 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(self, latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding, cond_dim, translator,
-                 device, standard_embeddings, in_size):
+                 device, standard_embeddings, trainable_embeddings, in_size):
         super().__init__()
         self.d = d
         self.p_coding = p_coding
@@ -132,6 +133,7 @@ class Decoder(nn.Module):
         self.latent_size = latent_size
         self.translator = translator
         self.standard_embeddings = standard_embeddings
+        self.trainable_embeddings = trainable_embeddings
         self.in_size = in_size
 
         # self.fc0 = nn.Linear(latent_size, latent_size)
@@ -186,7 +188,7 @@ class Decoder(nn.Module):
             if return_emb:
                 task_ids_enc_resized = None
                 bias = None
-            task_ids_enc = self.translator(task_id)
+            task_ids_enc = self.translator(task_id, self.trainable_embeddings)
             x = torch.cat([x, task_ids_enc], dim=1)
         elif translate_noise:
             # task_id = torch.cat([x, task_id.to(self.device)], dim=1)
@@ -255,10 +257,11 @@ class Translator_embeddings(nn.Module):
         self.fc2 = nn.Linear(n_dim_coding * 2, n_dim_coding * 3)
         self.fc3 = nn.Linear(n_dim_coding * 3, n_dim_coding)
 
-    def forward(self, task_id):
+    def forward(self, task_id, trainable_embeddings):
         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
         task_ids = unpackbits(codes, self.n_dim_coding).to(self.device)
-        # return task_ids
+        if not trainable_embeddings:
+            return task_ids
         # x = torch.cat([x, task_ids], dim=1)
         x = F.leaky_relu(self.fc1(task_ids))
         x = F.leaky_relu(self.fc2(x))

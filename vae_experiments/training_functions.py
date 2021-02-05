@@ -77,6 +77,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
                                                        curr_global_decoder.n_dim_coding, curr_global_decoder.p_coding,
                                                        curr_global_decoder.latent_size, curr_global_decoder.device),
                                                    standard_embeddings=curr_global_decoder.standard_embeddings,
+                                                   trainable_embeddings=curr_global_decoder.trainable_embeddings,
                                                    in_size=curr_global_decoder.in_size
                                                    ).to(curr_global_decoder.device)
     else:

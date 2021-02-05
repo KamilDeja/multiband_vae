@@ -78,6 +78,7 @@ def run(args):
                                           n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
                                           cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
                                           device=device, standard_embeddings=args.standard_embeddings,
+                                          trainable_embeddings=args.trainable_embeddings,
                                           in_size=train_dataset[0][0].size()[1]).to(device)
     elif args.training_procedure == "replay":
         local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
@@ -216,8 +217,13 @@ def get_args(argv):
                         help="Directory of pretrained generative models")
     parser.add_argument('--standard_embeddings', dest='standard_embeddings', default=False, action='store_true',
                         help="Train multiband with standard embeddings instead of matrix")
+    parser.add_argument('--trainable_embeddings', dest='trainable_embeddings', default=False, action='store_true',
+                        help="Train multiband with trainable embeddings instead of matrix")
 
     args = parser.parse_args(argv)
+
+    if args.trainable_embeddings:
+        args.standard_embeddings = True
 
     return args
 

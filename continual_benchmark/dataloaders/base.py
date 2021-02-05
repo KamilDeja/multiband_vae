@@ -1,9 +1,23 @@
+import os
+
 import torchvision
 from torchvision import transforms
 from .wrapper import CacheClassLabel
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset, TensorDataset
+
+
+class FastCelebA(Dataset):
+    def __init__(self, data, attr):
+        self.dataset = data
+        self.attr = attr
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        return self.dataset[index], self.attr[index]
 
 
 def CelebA(root, skip_normalization=False, train_aug=False, image_size=64, target_type='attr'):
@@ -17,10 +31,18 @@ def CelebA(root, skip_normalization=False, train_aug=False, image_size=64, targe
     ])
     dataset = torchvision.datasets.CelebA(root=root, download=True, transform=transform,
                                           target_type=target_type)
-
+    print("Loading data")
+    save_path = f"{root}/fast_celeba"
+    if os.path.exists(save_path):
+        fast_celeba = torch.load(save_path)
+    else:
+        train_loader = DataLoader(dataset, batch_size=len(dataset))
+        data = next(iter(train_loader))
+        fast_celeba = FastCelebA(data[0], data[1])
+        torch.save(fast_celeba, save_path)
     # train_set = CacheClassLabel(train_set)
     # val_set = CacheClassLabel(val_set)
-    return dataset, None
+    return fast_celeba, None
 
 
 def MNIST(dataroot, skip_normalization=False, train_aug=False):
