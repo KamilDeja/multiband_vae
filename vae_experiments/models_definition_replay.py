@@ -159,14 +159,17 @@ class Decoder(nn.Module):
                                              padding=2, output_padding=0, bias=False)
 
     def forward(self, x, task_id, conds, return_emb=False, translate_noise=True):
-        if self.cond_n_dim_coding:
-            with torch.no_grad():
+        with torch.no_grad():
+            if self.cond_n_dim_coding:
                 conds_coded = (conds * self.cond_p_coding) % (2 ** self.cond_n_dim_coding)
                 conds_coded = BitUnpacker.unpackbits(conds_coded, self.cond_n_dim_coding).to(self.device)
-                batch_conds_coded = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
-                batch_conds_coded = BitUnpacker.unpackbits(batch_conds_coded, self.n_dim_coding).to(self.device)
 
-            x = torch.cat([x, conds_coded, batch_conds_coded], dim=1)
+                x = torch.cat([x, conds_coded], dim=1)
+
+            batch_conds_coded = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
+            batch_conds_coded = BitUnpacker.unpackbits(batch_conds_coded, self.n_dim_coding).to(self.device)
+
+            x = torch.cat([x, batch_conds_coded], dim=1)
 
         x = F.leaky_relu(self.fc1(x))
         x = F.leaky_relu(self.fc2(x))
