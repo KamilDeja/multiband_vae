@@ -17,10 +17,10 @@ class Validator:
         self.dataloaders = dataloaders
 
         print("Preparing validator")
-        if dataset == "MNIST":
+        if dataset in ["MNIST", "FashionMNIST"]:
             from vae_experiments.evaluation_models.lenet import Model
             net = Model()
-            model_path = "vae_experiments/evaluation_models/lenet"
+            model_path = "vae_experiments/evaluation_models/lenet_" + dataset
             net.load_state_dict(torch.load(model_path))
             net.to(device)
             net.eval()
