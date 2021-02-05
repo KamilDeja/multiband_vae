@@ -1,4 +1,5 @@
 import copy
+import time
 import numpy as np
 import torch
 import torch.functional as F
@@ -18,6 +19,7 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
     task_ids = task_id
     for epoch in range(args.gen_ae_epochs):
         losses = []
+        start = time.time()
         for iteration, batch in enumerate(task_loader):
             x = batch[0].to(local_vae.device)
             y = batch[1].to(local_vae.device)
@@ -50,6 +52,7 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
             losses.append(loss.item())
         scheduler.step()
         #     print("lr:",scheduler.get_lr())
-        if (epoch % 10 == 0):
-            print("Epoch: {}/{}, loss: {}".format(epoch, args.gen_ae_epochs, np.mean(losses)))
+        if (epoch % 1 == 0):
+            print("Epoch: {}/{}, loss: {}, last epoch took {} s".format(epoch, args.gen_ae_epochs, np.mean(losses),
+                                                                        time.time() - start))
     return local_vae.decoder, table_tmp
