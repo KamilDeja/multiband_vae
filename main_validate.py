@@ -73,7 +73,12 @@ def evaluate_directory(args, device):
             fid_result = validator.compute_fid_from_examples(args, examples, j)  # task_id != 0)
             fid_table[j][task_id] = fid_result
             print(f"FID task {j}: {fid_result}")
-        to_plot = np.concatenate(to_plot).reshape(-1, 1, 28, 28)
+        if args.dataset.lower()  == "mnist":
+            to_plot = np.concatenate(to_plot).reshape(-1, 1, 28, 28)
+        elif args.dataset.lower() == "celeba":
+            to_plot = np.concatenate(to_plot).reshape(-1, 3, 64, 64)
+        else:
+            raise NotImplementedError
         plot_examples(args.experiment_name, to_plot, task_id)
 
     return fid_table
@@ -118,6 +123,8 @@ if __name__ == '__main__':
     torch.cuda.set_device(args.gpuid[0])
     device = torch.device("cuda")
     os.makedirs(f"{args.rpath}{args.experiment_name}", exist_ok=True)
+    with open(f"{args.rpath}{args.experiment_name}/args.txt", "w") as text_file:
+        text_file.write(str(args))
     acc_val = evaluate_directory(args, device)
     acc_val_dict = {}
     acc_val_dict[0] = acc_val

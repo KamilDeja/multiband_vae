@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 
-class BitUnpacker:
+class BitUnpacker: 
     results_map = {}
 
     @classmethod
