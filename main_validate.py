@@ -65,9 +65,10 @@ def evaluate_directory(args, device):
     for task_id in range(n_batches):
         fid_table[task_id] = OrderedDict()
         to_plot = []
+        print(f"Validation for task: {task_id}")
         for j in range(task_id + 1):
             val_name = j
-            print('validation split name:', val_name)
+            # print('validation split name:', val_name)
             examples = np.load(f"{args.directory}/generations_{task_id + 1}_{j + 1}.npy")
             to_plot.append(examples[:5])
             fid_result = validator.compute_fid_from_examples(args, examples, j)  # task_id != 0)

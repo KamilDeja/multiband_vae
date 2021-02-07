@@ -37,7 +37,8 @@ def run(args):
                                                                              num_batches=n_batches,
                                                                              num_classes=n_classes,
                                                                              random_split=args.random_split,
-                                                                             random_mini_shuffle=args.random_shuffle)
+                                                                             random_mini_shuffle=args.random_shuffle,
+                                                                             limit_data=args.limit_data)
     # else:
     #     # from vae_experiments import models_definition_mnist as models_definition
     #     train_dataset_splits, val_dataset_splits, task_output_space = SplitGen(train_dataset, val_dataset,
@@ -188,6 +189,8 @@ def get_args(argv):
                         help="Randomize the order of splits")
     parser.add_argument('--random_split', dest='random_split', default=False, action='store_true',
                         help="Randomize data in splits")
+    parser.add_argument('--limit_data', type=float, default=None,
+                        help="limit_data to given %")
     parser.add_argument('--random_shuffle', dest='random_shuffle', default=False, action='store_true',
                         help="Move part of data to next batch")
     parser.add_argument('--no_class_remap', dest='no_class_remap', default=False, action='store_true',

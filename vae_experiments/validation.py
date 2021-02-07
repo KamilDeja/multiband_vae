@@ -105,7 +105,7 @@ class Validator:
         if args.dataset.lower() == "mnist":
             generations = generations.reshape(-1, 1, 28, 28)
         elif args.dataset.lower() == "celeba":
-            generations = generations.reshape(-1, 3, 32, 32)
+            generations = generations.reshape(-1, 3, 64, 64)
         generations = torch.from_numpy(generations).to(self.device)
         distribution_gen = self.score_model_func(generations).cpu().detach().numpy().reshape(-1, self.dims)
 
