@@ -87,12 +87,12 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
             class_split = {
                 0: [8, 20],  # Black hair
                 1: [8, -20],
-                2: [11, 20],  # Brown hair
-                3: [11, -20],
+                6: [11, 20],  # Brown hair
+                7: [11, -20],
                 4: [35, 20],  # hat man
                 5: [35, -20],
-                6: [9, 20],  # Blond hair
-                7: [9, -20],
+                2: [9, 20],  # Blond hair
+                3: [9, -20],
                 8: [17],  # gray
                 9: [4]  # bold
             }
@@ -172,27 +172,32 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
     val_dataset_splits = {}
     task_output_space = {}
 
-    dataset_len = len(dataset)
-    train_set_len = int(dataset_len * 0.8)
-    train_indices = batch_indices[:train_set_len]
-    train_class_indices = class_indices[:train_set_len]
-    val_indices = batch_indices[train_set_len:]
-    val_class_indices = class_indices[train_set_len:]
+    # dataset_len = len(dataset)
+    # train_set_len = int(dataset_len * 0.8)
+    # train_indices = batch_indices[:train_set_len]
+    # train_class_indices = class_indices[:train_set_len]
+    # val_indices = batch_indices[train_set_len:]
+    # val_class_indices = class_indices[train_set_len:]
+    val_size = 0.3
 
     for name in batch_split:
-        current_batch_indices = torch.where(train_indices == name)[0]
+        current_batch_indices = torch.where(batch_indices == name)[0]
+        random_batch_samples = torch.rand(len(current_batch_indices))
+        current_train_indices = current_batch_indices[random_batch_samples <= (1 - val_size)]
+        current_val_indices = current_batch_indices[random_batch_samples > (1 - val_size)]
         if limit_data:
-            random_subset = torch.rand(len(current_batch_indices))
-            current_batch_indices = current_batch_indices[random_subset > 1 - limit_data]
-        train_subset = Subset(dataset, current_batch_indices)
+            random_subset = torch.rand(len(current_train_indices))
+            current_train_indices = current_train_indices[random_subset > 1 - limit_data]
+        train_subset = Subset(dataset, current_train_indices)
+
         if dataset_name.lower() == "celeba":
-            train_subset.labels = train_class_indices[current_batch_indices]  # torch.ones(len(train_subset), 1) * name
+            train_subset.labels = class_indices[current_train_indices]  # torch.ones(len(train_subset), 1) * name
         # train_subset.attr = train_subset.labels
         train_subset.class_list = batch_split[name]
 
-        val_subset = Subset(dataset, train_set_len + torch.where(val_indices == name)[0])
+        val_subset = Subset(dataset, current_val_indices)
         if dataset_name.lower() == "celeba":
-            val_subset.labels = val_class_indices[val_indices == name]  # torch.ones(len(val_subset), 1) * name
+            val_subset.labels = class_indices[current_val_indices]  # torch.ones(len(val_subset), 1) * name
         val_subset.class_list = batch_split[name]
         # val_subset.attr = val_subset.labels
 

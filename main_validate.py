@@ -47,7 +47,8 @@ def evaluate_directory(args, device):
                                                                              num_batches=n_batches,
                                                                              num_classes=n_classes,
                                                                              random_split=args.random_split,
-                                                                             random_mini_shuffle=args.random_shuffle)
+                                                                             random_mini_shuffle=args.random_shuffle,
+                                                                             limit_data=args.limit_data)
     val_loaders = []
     for task_name in range(n_batches):
         val_data = val_dataset_splits[
@@ -108,6 +109,8 @@ def get_args(argv):
     parser.add_argument('--random_shuffle', dest='random_shuffle', default=False, action='store_true',
                         help="Move part of data to next batch")
     parser.add_argument('--workers', type=int, default=0, help="#Thread for dataloader")
+    parser.add_argument('--limit_data', type=float, default=None,
+                        help="limit_data to given %")
 
     args = parser.parse_args(argv)
     return args

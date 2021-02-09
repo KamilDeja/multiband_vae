@@ -30,12 +30,13 @@ def run(args):
                                                                              num_batches=n_batches,
                                                                              num_classes=n_classes,
                                                                              random_split=args.random_split,
-                                                                             random_mini_shuffle=args.random_shuffle)
+                                                                             random_mini_shuffle=args.random_shuffle,
+                                                                             limit_data=args.limit_data)
 
     # train_dataset = train_dataset_splits[0]
     train_data = []
     labels = []
-    save_path = f"{args.dataroot}/exported/{args.dataset.lower()}_{len(train_dataset_splits)}_batches_random_{args.random_split}_train"
+    save_path = f"{args.dataroot}/exported/{args.exported_name}_{len(train_dataset_splits)}_batches_random_{args.random_split}_train"
     if not os.path.exists(save_path):
         os.mkdir(save_path)
 
@@ -68,6 +69,7 @@ def get_args(argv):
     # Data
     parser.add_argument('--dataroot', type=str, default='data', help="The root folder of dataset or downloaded data")
     parser.add_argument('--dataset', type=str, default='MNIST', help="MNIST(default)|CelebA")
+    parser.add_argument('--exported_name', type=str, help="name of the exported dataset")
     parser.add_argument('--n_permutation', type=int, default=0, help="Enable permuted tests when >0")
     parser.add_argument('--first_split_size', type=int, default=2)
     parser.add_argument('--other_split_size', type=int, default=2)
@@ -85,6 +87,8 @@ def get_args(argv):
     parser.add_argument('--train_aug', dest='train_aug', default=False, action='store_true',
                         help="Allow data augmentation during training")
     parser.add_argument('--workers', type=int, default=0, help="#Thread for dataloader")
+    parser.add_argument('--limit_data', type=float, default=None,
+                        help="limit_data to given %")
 
     args = parser.parse_args(argv)
 

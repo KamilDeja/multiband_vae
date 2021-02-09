@@ -91,7 +91,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
     # local_vae.translator.train()
     # frozen_translator = copy.deepcopy(curr_global_decoder.translator)
     # frozen_translator.eval()
-    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.005)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     criterion = nn.MSELoss(reduction='sum')
     embedding_loss_criterion = nn.MSELoss(reduction='sum')

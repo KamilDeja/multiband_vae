@@ -105,7 +105,7 @@ def run(args):
 
     validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
                           stats_file_name=
-                          f"seed_{args.seed}_f_split_{args.first_split_size}_split_{args.other_split_size}_val_{args.score_on_val}_{args.random_split}",
+                          f"seed_{args.seed}_f_split_{args.first_split_size}_split_{args.other_split_size}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}",
                           score_model_device=device, dataloaders=val_loaders)
     curr_global_decoder = None
     for task_id in range(len(task_names)):

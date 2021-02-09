@@ -11,7 +11,7 @@ from vae_experiments.training_functions import loss_fn
 
 def train_with_replay(args, local_vae, task_loader, task_id, class_table):
     optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     frozen_model = copy.deepcopy(local_vae.decoder)
     frozen_model.eval()
     local_vae.train()

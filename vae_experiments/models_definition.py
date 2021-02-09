@@ -15,7 +15,8 @@ def one_hot_conditionals(y, device, cond_dim):
 class VAE(nn.Module):
     def __init__(self, latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding, cond_dim,
                  device, in_size,
-                 standard_embeddings=False, trainable_embeddings = False):  # d defines the number of filters in conv layers of decoder and encoder
+                 standard_embeddings=False,
+                 trainable_embeddings=False):  # d defines the number of filters in conv layers of decoder and encoder
         super().__init__()
         self.p_coding = p_coding
         self.n_dim_coding = n_dim_coding
@@ -140,8 +141,8 @@ class Decoder(nn.Module):
 
         if in_size == 28:
             self.scaler = 4
-            self.fc2 = nn.Linear(self.d * 4, self.d * 8)
-            self.fc3 = nn.Linear(self.d * 8, self.d * self.scaler * self.scaler * self.scaler)
+            # self.fc2 = nn.Linear(self.d * 4, self.d * 8)
+            self.fc3 = nn.Linear(latent_size + cond_n_dim_coding, self.d * self.scaler * self.scaler * self.scaler)
             self.dc1 = nn.ConvTranspose2d(self.d * self.scaler, self.d * self.scaler, kernel_size=4, stride=2,
                                           padding=0, bias=False)
             self.dc1_bn = nn.BatchNorm2d(self.d * 4)
@@ -194,8 +195,8 @@ class Decoder(nn.Module):
         if self.cond_n_dim_coding:
             x = torch.cat([x, conds_coded], dim=1)
 
-        x = F.leaky_relu(self.fc1(x))
-        x = F.leaky_relu(self.fc2(x))
+        # x = F.leaky_relu(self.fc1(x))
+        # x = F.leaky_relu(self.fc2(x))
         x = F.leaky_relu(self.fc3(x))
         x = x.view(-1, self.d * self.scaler, self.scaler, self.scaler)
 
@@ -219,10 +220,10 @@ class Translator(nn.Module):
         self.device = device
         self.latent_size = latent_size
 
-        self.fc1 = nn.Linear(n_dim_coding, latent_size)
-        self.fc2 = nn.Linear(latent_size, latent_size * n_dim_coding)
-        self.fc3 = nn.Linear(latent_size * n_dim_coding, latent_size * latent_size)
-        self.fc4 = nn.Linear(latent_size * n_dim_coding, 1)
+        self.fc1 = nn.Linear(n_dim_coding, max(latent_size, 16))
+        self.fc2 = nn.Linear(max(latent_size, 16), max(latent_size * n_dim_coding, 32))
+        self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
+        self.fc4 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size)
 
     def forward(self, task_id):
         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
@@ -234,7 +235,7 @@ class Translator(nn.Module):
         bias = self.fc4(x)
         # task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)
         task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)
-        task_ids_enc_resized = torch.softmax(task_ids_enc_resized, 1)
+        # task_ids_enc_resized = torch.softmax(task_ids_enc_resized, 1)
         return task_ids_enc_resized, bias
 
 
