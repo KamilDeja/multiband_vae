@@ -184,8 +184,11 @@ class Decoder(nn.Module):
             x = torch.cat([x, task_ids_enc], dim=1)
         elif translate_noise:
             # task_id = torch.cat([x, task_id.to(self.device)], dim=1)
-            task_ids_enc_resized, bias = self.translator(task_id)
-            x = torch.bmm(task_ids_enc_resized, x.unsqueeze(-1)).squeeze(2) + bias
+            # task_ids_enc_resized, bias = self.translator(task_id)
+            # x = torch.bmm(task_ids_enc_resized, x.unsqueeze(-1)).squeeze(2) + bias
+            x = self.translator(x, task_id)
+            task_ids_enc_resized = None
+            bias = None
         else:
             task_ids_enc_resized = None
             bias = None
@@ -197,7 +200,8 @@ class Decoder(nn.Module):
 
         # x = F.leaky_relu(self.fc1(x))
         # x = F.leaky_relu(self.fc2(x))
-        x = F.leaky_relu(self.fc3(x))
+        # x = F.leaky_relu(self.fc3(x))
+        x = self.fc3(x)
         x = x.view(-1, self.d * self.scaler, self.scaler, self.scaler)
 
         x = self.dc1(x)
@@ -220,23 +224,23 @@ class Translator(nn.Module):
         self.device = device
         self.latent_size = latent_size
 
-        self.fc1 = nn.Linear(n_dim_coding, max(latent_size, 16))
+        self.fc1 = nn.Linear(n_dim_coding + latent_size, max(latent_size, 16))
         self.fc2 = nn.Linear(max(latent_size, 16), max(latent_size * n_dim_coding, 32))
-        self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
+        # self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
         self.fc4 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size)
 
-    def forward(self, task_id):
+    def forward(self, x, task_id):
         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
         task_ids = BitUnpacker.unpackbits(codes, self.n_dim_coding).to(self.device)
-        # x = torch.cat([x, task_ids], dim=1)
-        x = F.leaky_relu(self.fc1(task_ids))
+        x = torch.cat([x, task_ids], dim=1)
+        x = F.leaky_relu(self.fc1(x))
         x = F.leaky_relu(self.fc2(x))
-        matrix = self.fc3(x)
-        bias = self.fc4(x)
+        # matrix = self.fc3(x)
+        out = self.fc4(x)
         # task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)
-        task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)
+        # task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)
         # task_ids_enc_resized = torch.softmax(task_ids_enc_resized, 1)
-        return task_ids_enc_resized, bias
+        return out  # task_ids_enc_resized, bias
 
 
 class Translator_embeddings(nn.Module):

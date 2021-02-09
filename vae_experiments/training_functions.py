@@ -33,7 +33,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
     # else:
     translate_noise = False
     optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     table_tmp = torch.zeros(n_classes, dtype=torch.long)
     lap_loss = LapLoss(device=local_vae.device) if use_lap_loss else None
 
@@ -91,7 +91,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
     # local_vae.translator.train()
     # frozen_translator = copy.deepcopy(curr_global_decoder.translator)
     # frozen_translator.eval()
-    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.005)
+    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     criterion = nn.MSELoss(reduction='sum')
     embedding_loss_criterion = nn.MSELoss(reduction='sum')

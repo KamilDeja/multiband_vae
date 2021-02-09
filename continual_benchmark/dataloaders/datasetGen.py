@@ -110,8 +110,13 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
             0: [0, 1],
             1: [2, 3],
             2: [4, 5],
-            3: [6, 7],
-            4: [8, 9]
+            3: [4, 5],
+            4: [6, 7]
+            # 0: [0, 1],
+            # 1: [2, 3],
+            # 2: [4, 5],
+            # 3: [6, 7],
+            # 4: [8, 9]
         }
     elif num_batches == 1:
         batch_split = {
@@ -153,11 +158,11 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
             split = batch_split[task]
             batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)] = task  # class_indices in split
             if random_mini_shuffle:
-                if task % 2 == 0:
+                if task  == 0:
                     selected_indices = batch_indices[batch_indices == task]
                     random_subset = torch.rand(len(selected_indices))
                     # shuffle_size = #int(0.6 * len(selected_indices))
-                    selected_indices[random_subset > 0.6] += 1
+                    selected_indices[random_subset > 0.2] = (selected_indices[random_subset > 0.2] + 2) #% num_batches
                     batch_indices[batch_indices == task] = selected_indices
 
     # if random_mini_shuffle:
@@ -205,8 +210,8 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
         val_dataset_splits[name] = AppendName(val_subset, name)
         task_output_space[name] = (batch_indices == name).sum()
 
-    print(f"Prepared dataset with splits: {[(idx,len(data)) for idx,data in enumerate(train_dataset_splits.values())]}")
-
+    print(
+        f"Prepared dataset with splits: {[(idx, len(data)) for idx, data in enumerate(train_dataset_splits.values())]}")
 
     return train_dataset_splits, val_dataset_splits, task_output_space
 
