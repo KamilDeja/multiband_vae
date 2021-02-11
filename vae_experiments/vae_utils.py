@@ -79,7 +79,7 @@ def generate_images(curr_global_decoder, z, task_ids, y, return_emb=False, trans
 
 def generate_noise_for_previous_data(n_img, n_task, latent_size, tasks_dist, device, same_z=False):
     if same_z:
-        z_max = torch.randn([max(tasks_dist), latent_size]).to(device)
+        z_max = torch.randn([max(tasks_dist)*2, latent_size]).to(device)
         z = []
         for n_img in tasks_dist:
             z.append(z_max[:n_img])

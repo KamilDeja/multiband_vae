@@ -134,15 +134,21 @@ class Decoder(nn.Module):
         self.in_size = in_size
 
         # self.fc0 = nn.Linear(latent_size, latent_size)
-        if self.standard_embeddings:
-            self.fc1 = nn.Linear(latent_size + cond_n_dim_coding + n_dim_coding, self.d * 4)
+
+        if in_size == 28:
+            self.scaler = 4
         else:
-            self.fc1 = nn.Linear(latent_size + cond_n_dim_coding, self.d * 4)
+            self.scaler = 8
+
+        if self.standard_embeddings:
+            self.fc1 = nn.Linear(latent_size + cond_n_dim_coding + n_dim_coding, self.d * self.scaler * self.scaler * self.scaler)
+        else:
+            self.fc1 = nn.Linear(latent_size + cond_n_dim_coding, self.d * self.scaler * self.scaler * self.scaler)
 
         if in_size == 28:
             self.scaler = 4
             # self.fc2 = nn.Linear(self.d * 4, self.d * 8)
-            self.fc3 = nn.Linear(latent_size + cond_n_dim_coding, self.d * self.scaler * self.scaler * self.scaler)
+            # self.fc3 = nn.Linear(latent_size + cond_n_dim_coding, self.d * self.scaler * self.scaler * self.scaler)
             self.dc1 = nn.ConvTranspose2d(self.d * self.scaler, self.d * self.scaler, kernel_size=4, stride=2,
                                           padding=0, bias=False)
             self.dc1_bn = nn.BatchNorm2d(self.d * 4)
@@ -153,8 +159,8 @@ class Decoder(nn.Module):
             self.dc_out = nn.ConvTranspose2d(self.d, 1, kernel_size=4, stride=1, padding=0, bias=False)
         else:
             self.scaler = 8
-            self.fc2 = nn.Linear(self.d * 4, self.d * 8)
-            self.fc3 = nn.Linear(self.d * 8, self.d * 8 * 8 * 8)
+            # self.fc2 = nn.Linear(self.d * 4, self.d * 8)
+            # self.fc3 = nn.Linear(latent_size + cond_n_dim_coding, self.d * 8 * 8 * 8)
             self.dc1 = nn.ConvTranspose2d(self.d * 8, self.d * 4, kernel_size=5, stride=2,
                                           padding=2, output_padding=1, bias=False)
             self.dc1_bn = nn.BatchNorm2d(self.d * 4)
@@ -192,8 +198,6 @@ class Decoder(nn.Module):
         else:
             task_ids_enc_resized = None
             bias = None
-            # x = x.repeat([1, 2])
-            # x = F.avg_pool1d(x.unsqueeze(1), 2).squeeze(1)#x[:, :self.latent_size//2]
 
         if self.cond_n_dim_coding:
             x = torch.cat([x, conds_coded], dim=1)
@@ -201,9 +205,8 @@ class Decoder(nn.Module):
         # x = F.leaky_relu(self.fc1(x))
         # x = F.leaky_relu(self.fc2(x))
         # x = F.leaky_relu(self.fc3(x))
-        x = self.fc3(x)
+        x = self.fc1(x)
         x = x.view(-1, self.d * self.scaler, self.scaler, self.scaler)
-
         x = self.dc1(x)
         x = F.leaky_relu(self.dc1_bn(x))
         x = self.dc2(x)
@@ -261,7 +264,6 @@ class Translator_embeddings(nn.Module):
         # return task_ids
         if not trainable_embeddings:
             return task_ids
-        # x = torch.cat([x, task_ids], dim=1)
         x = F.leaky_relu(self.fc1(task_ids))
         x = F.leaky_relu(self.fc2(x))
         x = torch.sigmoid(self.fc3(x))

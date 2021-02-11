@@ -4,6 +4,7 @@ import torch
 import numpy as np
 
 from vae_experiments.fid import calculate_frechet_distance
+from vae_experiments.prd import compute_prd_from_embedding, prd_to_max_f_beta_pair
 from vae_experiments.vae_utils import generate_images
 
 
@@ -11,20 +12,19 @@ class Validator:
     def __init__(self, n_classes, device, dataset, stats_file_name, dataloaders, score_model_device=None):
         self.n_classes = n_classes
         self.device = device
-        self.stats_file_name = stats_file_name
         self.dataset = dataset
         self.score_model_device = score_model_device
         self.dataloaders = dataloaders
 
         print("Preparing validator")
         if dataset in ["MNIST", "FashionMNIST"]:
-            from vae_experiments.evaluation_models.lenet import Model
+            from vae_experiments.evaluation_models.lenet_emnist import Model
             net = Model()
-            model_path = "vae_experiments/evaluation_models/lenet_" + dataset
+            model_path = "vae_experiments/evaluation_models/lenet_emnist"# + dataset
             net.load_state_dict(torch.load(model_path))
             net.to(device)
             net.eval()
-            self.dims = 84
+            self.dims = 128
             self.score_model_func = net.part_forward
         elif dataset.lower() == "celeba":
             from vae_experiments.evaluation_models.inception import InceptionV3
@@ -35,6 +35,7 @@ class Validator:
                 model = model.to(score_model_device)
             model.eval()
             self.score_model_func = lambda batch: model(batch)[0]
+        self.stats_file_name = f"{stats_file_name}_dims_{self.dims}"
 
     def compute_fid(self, curr_global_decoder, class_table, task_id, translate_noise=True):
         curr_global_decoder.eval()
@@ -68,23 +69,26 @@ class Validator:
                 labels, counts = torch.unique_consecutive(y, return_counts=True)
                 for i, n_occ in zip(labels, counts):
                     tasks_sampled.append(task_samplers[i].sample([n_occ]))
-                #     task_ids = np.repeat(list(range(n_tasks)),batch_size//n_tasks)
+
                 task_ids = torch.cat(tasks_sampled)
                 example = generate_images(curr_global_decoder, z, task_ids, y, translate_noise=translate_noise)
                 if not precalculated_statistics:
                     distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
-                distribution_gen.append(self.score_model_func(example))  # .cpu().detach().numpy())
-                # class_gen.append(np.argmax(net(example).cpu().detach().numpy(), 1))
-                # conds.append(y.detach().numpy())
+                distribution_gen.append(self.score_model_func(example))
+
             distribution_gen = torch.cat(distribution_gen).cpu().detach().numpy().reshape(-1, self.dims)
             # distribution_gen = np.array(np.concatenate(distribution_gen)).reshape(-1, self.dims)
             if not precalculated_statistics:
                 distribution_orig = np.array(np.concatenate(distribution_orig)).reshape(-1, self.dims)
                 np.save(stats_file_path, distribution_orig)
 
-            # orig_classes = np.array(conds).reshape(-1)
-            # generated_classes = np.array(class_gen).reshape(-1)
-            return calculate_frechet_distance(distribution_gen, distribution_orig)
+
+            precision, recall = compute_prd_from_embedding(
+                eval_data=distribution_orig[np.random.choice(len(distribution_orig), len(distribution_gen), False)],
+                ref_data=distribution_gen)
+            precision, recall = prd_to_max_f_beta_pair(precision, recall)
+            print(f"Precision:{precision},recall: {recall}")
+            return calculate_frechet_distance(distribution_gen, distribution_orig), precision, recall
 
     def compute_fid_from_examples(self, args, generations, task_id):
         distribution_orig = []

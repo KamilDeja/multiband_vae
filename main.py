@@ -71,6 +71,8 @@ def run(args):
         shuffle(task_names)
         print('Shuffled task order:', task_names)
     fid_table = OrderedDict()
+    precision_table = OrderedDict()
+    recall_table = OrderedDict()
     test_fid_table = OrderedDict()
 
     # Prepare VAE
@@ -135,9 +137,10 @@ def run(args):
 
         # Plotting results for already learned tasks
         if not args.gen_load_pretrained_models:
-            vae_utils.plot_results(args.experiment_name, curr_global_decoder, class_table, task_id, same_z=True)
+            vae_utils.plot_results(args.experiment_name, curr_global_decoder, class_table, task_id,
+                                   translate_noise=task_id != 0, same_z=True)
             vae_utils.plot_results(args.experiment_name, local_vae.decoder, class_table, task_id,
-                                   translate_noise=task_id == 0, suffix="_local_vae", same_z=True)
+                                   translate_noise=False, suffix="_local_vae", same_z=True)
             torch.save(curr_global_decoder.state_dict(), f"results/{args.experiment_name}/model{task_id}_curr_decoder")
             torch.save(local_vae.state_dict(), f"results/{args.experiment_name}/model{task_id}_local_vae")
 
@@ -145,6 +148,8 @@ def run(args):
 
         # Classifier validation
         fid_table[task_name] = OrderedDict()
+        precision_table[task_name] = OrderedDict()
+        recall_table[task_name] = OrderedDict()
         if args.skip_validation:
             for j in range(task_id + 1):
                 fid_table[j][task_name] = -1
@@ -152,11 +157,14 @@ def run(args):
             for j in range(task_id + 1):
                 val_name = task_names[j]
                 print('validation split name:', val_name)
-                fid_result = validator.compute_fid(curr_global_decoder=curr_global_decoder, class_table=class_table,
-                                                   task_id=j, translate_noise=task_id != 0)
+                fid_result, precision, recall = validator.compute_fid(curr_global_decoder=curr_global_decoder,
+                                                                      class_table=class_table,
+                                                                      task_id=j, translate_noise=task_id != 0)
                 fid_table[j][task_name] = fid_result
+                precision_table[j][task_name] = precision
+                recall_table[j][task_name] = recall
                 print(f"FID task {j}: {fid_result}")
-    return fid_table, task_names, test_fid_table
+    return fid_table, task_names, test_fid_table, precision_table, recall_table
 
 
 def get_args(argv):
@@ -248,12 +256,14 @@ if __name__ == '__main__':
     else:
         print("WARNING: Not using manual seed - your experiments will not be reproducible")
 
-    acc_val, acc_test = {}, {}
+    acc_val, acc_test, precision_table, recall_table = {}, {}, {}, {}
     os.makedirs(f"{args.rpath}{args.experiment_name}", exist_ok=True)
     with open(f"{args.rpath}{args.experiment_name}/args.txt", "w") as text_file:
         text_file.write(str(args))
     for r in range(args.repeat):
-        acc_val[r], _, acc_test[r] = run(args)
-    np.save(f"{args.rpath}{args.experiment_name}/acc_val.npy", acc_val)
-    np.save(f"{args.rpath}{args.experiment_name}/acc_test.npy", acc_test)
-    plot_final_results([args.experiment_name])
+        acc_val[r], _, acc_test[r], precision_table[r], recall_table[r] = run(args)
+    np.save(f"{args.rpath}{args.experiment_name}/fid.npy", acc_val)
+    # np.save(f"{args.rpath}{args.experiment_name}/fid_test.npy", acc_test)
+    np.save(f"{args.rpath}{args.experiment_name}/precision.npy", precision_table)
+    np.save(f"{args.rpath}{args.experiment_name}/recall.npy", recall_table)
+    plot_final_results([args.experiment_name], type="fid")

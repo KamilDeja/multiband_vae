@@ -107,16 +107,16 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
 
     if num_batches == 5:
         batch_split = {
+            # 0: [2, 3],
+            # 1: [0, 1],
+            # 2: [3, 4],
+            # 3: [0, 1],
+            # 4: [6, 7]
             0: [0, 1],
             1: [2, 3],
             2: [4, 5],
-            3: [4, 5],
-            4: [6, 7]
-            # 0: [0, 1],
-            # 1: [2, 3],
-            # 2: [4, 5],
-            # 3: [6, 7],
-            # 4: [8, 9]
+            3: [6, 7],
+            4: [8, 9]
         }
     elif num_batches == 1:
         batch_split = {
@@ -125,9 +125,8 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
     else:
         raise NotImplementedError()
 
-    class_indices = torch.zeros(len(dataset)) - 1
-
     if dataset_name.lower() == "celeba":
+        class_indices = torch.zeros(len(dataset)) - 1
         for class_id in class_split:
             tmp_attr = class_split[class_id]
             tmp_indices = torch.ones(len(dataset))
@@ -143,75 +142,53 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
     if num_batches == 1:
         class_indices = (
                                 class_indices - class_indices % 2) // 2  # To have the same classes as batch indices in normal setup
-    # val_indices = torch.zeros(len(train_dataset)) - 1
-    batch_indices = (torch.zeros(len(dataset)) - 2)
+
+    batch_indices = (torch.zeros(len(dataset), num_batches))
     if random_split:
-        # batch_indices += (torch.rand_like(batch_indices) * num_batches).long()
-        # to include only selected classes
-        for task in batch_split:
-            split = batch_split[task]
-            batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)] = (torch.rand_like(
-                batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)]) * num_batches)
-        batch_indices = batch_indices.long()
+        batch_indices[range(len(dataset)), torch.randint(low=0, high=num_batches, size=[len(dataset)])] = 1
     else:
         for task in batch_split:
             split = batch_split[task]
-            batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1)] = task  # class_indices in split
-            if random_mini_shuffle:
-                if task  == 0:
-                    selected_indices = batch_indices[batch_indices == task]
-                    random_subset = torch.rand(len(selected_indices))
-                    # shuffle_size = #int(0.6 * len(selected_indices))
-                    selected_indices[random_subset > 0.2] = (selected_indices[random_subset > 0.2] + 2) #% num_batches
-                    batch_indices[batch_indices == task] = selected_indices
+            batch_indices[(class_indices[..., None] == torch.tensor(split)).any(-1), task] = 1  # class_indices in split
 
-    # if random_mini_shuffle:
-    #     shuffle_size = int(0.5 * len(batch_indices))
-    #     selected_batch_indices = batch_indices[batch_indices >= 0]
-    #     selected_batch_indices[:shuffle_size] = (selected_batch_indices[:shuffle_size] + 1) % num_batches
-    #     batch_indices[
-    #         batch_indices >= 0] = selected_batch_indices  # = (batch_indices[batch_indices >= 0][:shuffle_size] + 1) % num_batches
     dataset.attr = class_indices.view(-1, 1).long()
 
     train_dataset_splits = {}
     val_dataset_splits = {}
     task_output_space = {}
 
-    # dataset_len = len(dataset)
-    # train_set_len = int(dataset_len * 0.8)
-    # train_indices = batch_indices[:train_set_len]
-    # train_class_indices = class_indices[:train_set_len]
-    # val_indices = batch_indices[train_set_len:]
-    # val_class_indices = class_indices[train_set_len:]
     val_size = 0.3
+    random_samples = torch.rand(len(dataset))
+    train_set_indices = torch.ones(len(dataset))
+    train_set_indices[random_samples < val_size] = 0
 
     for name in batch_split:
-        current_batch_indices = torch.where(batch_indices == name)[0]
-        random_batch_samples = torch.rand(len(current_batch_indices))
-        current_train_indices = current_batch_indices[random_batch_samples <= (1 - val_size)]
-        current_val_indices = current_batch_indices[random_batch_samples > (1 - val_size)]
+        current_batch_indices = batch_indices[:, name] == 1
+        current_train_indices = train_set_indices * current_batch_indices
+        current_val_indices = (1 - train_set_indices) * current_batch_indices
         if limit_data:
             random_subset = torch.rand(len(current_train_indices))
-            current_train_indices = current_train_indices[random_subset > 1 - limit_data]
-        train_subset = Subset(dataset, current_train_indices)
+            current_train_indices[random_subset > limit_data] = 0
+        train_subset = Subset(dataset, torch.where(current_train_indices == 1)[0])
 
         if dataset_name.lower() == "celeba":
-            train_subset.labels = class_indices[current_train_indices]  # torch.ones(len(train_subset), 1) * name
-        # train_subset.attr = train_subset.labels
+            train_subset.labels = class_indices[current_train_indices == 1]
         train_subset.class_list = batch_split[name]
 
-        val_subset = Subset(dataset, current_val_indices)
+        val_subset = Subset(dataset, torch.where(current_val_indices == 1)[0])
         if dataset_name.lower() == "celeba":
-            val_subset.labels = class_indices[current_val_indices]  # torch.ones(len(val_subset), 1) * name
+            val_subset.labels = class_indices[current_val_indices == 1]
         val_subset.class_list = batch_split[name]
         # val_subset.attr = val_subset.labels
 
         train_dataset_splits[name] = AppendName(train_subset, name)
         val_dataset_splits[name] = AppendName(val_subset, name)
-        task_output_space[name] = (batch_indices == name).sum()
+        task_output_space[name] = (batch_indices[:, name] == 1).sum()
 
     print(
         f"Prepared dataset with splits: {[(idx, len(data)) for idx, data in enumerate(train_dataset_splits.values())]}")
+    print(
+        f"Validation dataset with splits: {[(idx, len(data)) for idx, data in enumerate(val_dataset_splits.values())]}")
 
     return train_dataset_splits, val_dataset_splits, task_output_space
 

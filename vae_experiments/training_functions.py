@@ -1,3 +1,4 @@
+import math
 import time
 import torch
 import numpy as np
@@ -32,7 +33,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
     #     translate_noise = False
     # else:
     translate_noise = False
-    optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.005)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     table_tmp = torch.zeros(n_classes, dtype=torch.long)
     lap_loss = LapLoss(device=local_vae.device) if use_lap_loss else None
@@ -91,7 +92,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
     # local_vae.translator.train()
     # frozen_translator = copy.deepcopy(curr_global_decoder.translator)
     # frozen_translator.eval()
-    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.005)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     criterion = nn.MSELoss(reduction='sum')
     embedding_loss_criterion = nn.MSELoss(reduction='sum')
@@ -125,26 +126,56 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
 
             z_concat = torch.cat([z_prev, z_local])
             task_ids_concat = torch.cat([task_ids_prev, task_ids_local])
+            class_concat = torch.cat([classes_prev, sampled_classes_local])
+            if epoch > 10:
+                with torch.no_grad():
+                    prev_noise_translated = global_decoder.translator(z_prev, task_ids_prev)
+                    current_noise_translated = global_decoder.translator(z_local, task_ids_local)
+                    noise_diff_threshold = current_noise_translated.std()  # 3
+                    for prev_task_id in range(task_id):
+                        selected_task_ids = torch.where(task_ids_prev == prev_task_id)[0]
+                        selected_task_ids = selected_task_ids[:len(current_noise_translated)]
+                        noises_distances = torch.pairwise_distance(prev_noise_translated[selected_task_ids],
+                                                                   current_noise_translated[:len(selected_task_ids)])
+                        if (noises_distances < noise_diff_threshold).sum() > 0:
+                            imgs_task = recon_prev[selected_task_ids]
+                            imgs_task[noises_distances < noise_diff_threshold] = recon_local[:len(selected_task_ids)][
+                                noises_distances < noise_diff_threshold]
+                            recon_prev[selected_task_ids] = imgs_task
+                            print(
+                                f"Epoch: {epoch} - changing {(noises_distances < noise_diff_threshold).sum()} from {prev_task_id} to {task_id}")
+
             recon_concat = torch.cat([recon_prev, recon_local])
 
-            global_recon = global_decoder(z_concat, task_ids_concat, torch.cat([classes_prev, sampled_classes_local]))
-            loss = criterion(global_recon, recon_concat)
-            # if (not local_vae.standarde_embeddings) and (task_id > 1):
-            #     new_matrix, new_bias = global_decoder.translator(task_ids_prev)  # z_prev
-            #     prev_matrix, prev_bias = embeddings_prev
-            #     embedding_loss = embedding_loss_criterion(new_matrix, prev_matrix)
-            #     embedding_loss_bias = embedding_loss_criterion(new_bias, prev_bias)
-            #     loss = loss + embedding_loss + embedding_loss_bias
+            n_mini_batches = math.ceil(len(z_concat) / batch_size)
+            shuffle = torch.randperm(len(task_ids_concat))
+            z_concat = z_concat[shuffle]
+            task_ids_concat = task_ids_concat[shuffle]
+            recon_concat = recon_concat[shuffle]
+            class_concat = class_concat[shuffle]
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            for batch_id in range(n_mini_batches):
+                start_point = batch_id * batch_size
+                end_point = min(len(task_ids_concat), (batch_id + 1) * batch_size)
+                global_recon = global_decoder(z_concat[start_point:end_point], task_ids_concat[start_point:end_point],
+                                              class_concat[start_point:end_point])
+                loss = criterion(global_recon, recon_concat[start_point:end_point])
+                # if (not local_vae.standarde_embeddings) and (task_id > 1):
+                #     new_matrix, new_bias = global_decoder.translator(task_ids_prev)  # z_prev
+                #     prev_matrix, prev_bias = embeddings_prev
+                #     embedding_loss = embedding_loss_criterion(new_matrix, prev_matrix)
+                #     embedding_loss_bias = embedding_loss_criterion(new_bias, prev_bias)
+                #     loss = loss + embedding_loss + embedding_loss_bias
 
-            losses.append(loss.item())
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                losses.append(loss.item())
         scheduler.step()
         #     print("lr:",scheduler.get_lr())
         if (epoch % 1 == 0):
             print("Epoch: {}/{}, loss: {}, took: {} s".format(epoch, n_epochs, np.mean(losses), time.time() - start))
 
-    # local_vae.translator = copy.deepcopy(global_decoder.translator)
+    local_vae.decoder = copy.deepcopy(global_decoder)
     return global_decoder
