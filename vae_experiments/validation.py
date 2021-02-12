@@ -20,7 +20,7 @@ class Validator:
         if dataset in ["MNIST", "FashionMNIST"]:
             from vae_experiments.evaluation_models.lenet_emnist import Model
             net = Model()
-            model_path = "vae_experiments/evaluation_models/lenet_emnist"# + dataset
+            model_path = "vae_experiments/evaluation_models/lenet_emnist"  # + dataset
             net.load_state_dict(torch.load(model_path))
             net.to(device)
             net.eval()
@@ -37,7 +37,7 @@ class Validator:
             self.score_model_func = lambda batch: model(batch)[0]
         self.stats_file_name = f"{stats_file_name}_dims_{self.dims}"
 
-    def compute_fid(self, curr_global_decoder, class_table, task_id, translate_noise=True):
+    def compute_fid(self, curr_global_decoder, class_table, task_id, translate_noise=True, starting_point=None):
         curr_global_decoder.eval()
         class_table = class_table[:task_id + 1]
         test_loader = self.dataloaders[task_id]
@@ -71,6 +71,8 @@ class Validator:
                     tasks_sampled.append(task_samplers[i].sample([n_occ]))
 
                 task_ids = torch.cat(tasks_sampled)
+                if starting_point != None:
+                    task_ids = torch.zeros(len(task_ids)) + starting_point
                 example = generate_images(curr_global_decoder, z, task_ids, y, translate_noise=translate_noise)
                 if not precalculated_statistics:
                     distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
@@ -81,7 +83,6 @@ class Validator:
             if not precalculated_statistics:
                 distribution_orig = np.array(np.concatenate(distribution_orig)).reshape(-1, self.dims)
                 np.save(stats_file_path, distribution_orig)
-
 
             precision, recall = compute_prd_from_embedding(
                 eval_data=distribution_orig[np.random.choice(len(distribution_orig), len(distribution_gen), False)],

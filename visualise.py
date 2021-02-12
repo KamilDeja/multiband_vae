@@ -48,10 +48,13 @@ def acc_over_time_plot(ax, array):
     ax.plot(np.arange(1, num_tasks + 1), mean)
 
 
-def plot_final_results(names, rpath='results/', type="fid"):
+def plot_final_results(names, rpath='results/', type="fid", fid_local_vae=None):
     fig = plt.figure(figsize=(13, 5 * len(names)))
     gs = GridSpec(len(names), 3)
-    fig.suptitle(f"Experiment: {names[0]}")
+    additional = ""
+    if fid_local_vae != None:
+        additional = "local_vae_fid: " + str([(x, round(fid_local_vae[x], 2)) for x in fid_local_vae])
+    fig.suptitle(f"Experiment: {names[0]}\n {additional}")
     for e, name in enumerate(names):
         acc_dict = np.load(f"{rpath}{name}/fid.npy", allow_pickle=True).item()
         arr_fid = dict2array(acc_dict)

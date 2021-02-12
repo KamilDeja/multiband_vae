@@ -107,16 +107,16 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
 
     if num_batches == 5:
         batch_split = {
-            # 0: [2, 3],
-            # 1: [0, 1],
-            # 2: [3, 4],
-            # 3: [0, 1],
-            # 4: [6, 7]
-            0: [0, 1],
-            1: [2, 3],
-            2: [4, 5],
-            3: [6, 7],
-            4: [8, 9]
+            0: [2, 3],
+            1: [0, 1],
+            2: [2, 3],
+            3: [0, 1],
+            4: [6, 7]
+            # 0: [0, 1],
+            # 1: [2, 3],
+            # 2: [4, 5],
+            # 3: [6, 7],
+            # 4: [8, 9]
         }
     elif num_batches == 1:
         batch_split = {

@@ -24,6 +24,7 @@ class VAE(nn.Module):
         self.device = device
         self.standard_embeddings = standard_embeddings
         self.in_size = in_size
+        self.starting_point = None
 
         self.encoder = Encoder(latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device, in_size)
         if standard_embeddings:
@@ -34,18 +35,22 @@ class VAE(nn.Module):
                                self.translator, device, standard_embeddings=standard_embeddings,
                                trainable_embeddings=trainable_embeddings, in_size=in_size)
 
-    def forward(self, x, task_id, conds, translate_noise=True):
+    def forward(self, x, task_id, conds, translate_noise=True, noise=None):
         batch_size = x.size(0)
         means, log_var = self.encoder(x, conds)
 
         std = torch.exp(0.5 * log_var)
-        eps = torch.randn([batch_size, self.latent_size]).to(self.device)
-        z = eps * std + means
-        if task_id != None:
-            task_ids = torch.zeros([batch_size, 1]) + task_id
+        if noise == None:
+            eps = torch.randn([batch_size, self.latent_size]).to(self.device)
         else:
-            task_ids = torch.zeros([batch_size, 1])
-        recon_x = self.decoder(z, task_ids, conds, translate_noise=translate_noise)
+            eps = noise
+        z = eps * std + means
+        if not torch.is_tensor(task_id):
+            if task_id != None:
+                task_id = torch.zeros([batch_size, 1]) + task_id
+            else:
+                task_id = torch.zeros([batch_size, 1])
+        recon_x = self.decoder(z, task_id, conds, translate_noise=translate_noise)
 
         return recon_x, means, log_var, z
 
@@ -141,9 +146,10 @@ class Decoder(nn.Module):
             self.scaler = 8
 
         if self.standard_embeddings:
-            self.fc1 = nn.Linear(latent_size + cond_n_dim_coding + n_dim_coding, self.d * self.scaler * self.scaler * self.scaler)
+            self.fc1 = nn.Linear(latent_size * 4 + cond_n_dim_coding + n_dim_coding,
+                                 self.d * self.scaler * self.scaler * self.scaler)
         else:
-            self.fc1 = nn.Linear(latent_size + cond_n_dim_coding, self.d * self.scaler * self.scaler * self.scaler)
+            self.fc1 = nn.Linear(latent_size * 4 + cond_n_dim_coding, self.d * self.scaler * self.scaler * self.scaler)
 
         if in_size == 28:
             self.scaler = 4
@@ -227,17 +233,19 @@ class Translator(nn.Module):
         self.device = device
         self.latent_size = latent_size
 
-        self.fc1 = nn.Linear(n_dim_coding + latent_size, max(latent_size, 16))
-        self.fc2 = nn.Linear(max(latent_size, 16), max(latent_size * n_dim_coding, 32))
+        self.fc1 = nn.Linear(n_dim_coding + latent_size, latent_size * 2)
+        # self.fc2 = nn.Linear(max(latent_size, 16), max(latent_size * n_dim_coding, 32))
         # self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
-        self.fc4 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size)
+        # self.fc4 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size)
+        self.fc4 = nn.Linear(latent_size * 2, latent_size * 4)
 
     def forward(self, x, task_id):
         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
         task_ids = BitUnpacker.unpackbits(codes, self.n_dim_coding).to(self.device)
         x = torch.cat([x, task_ids], dim=1)
         x = F.leaky_relu(self.fc1(x))
-        x = F.leaky_relu(self.fc2(x))
+        # x = self.fc1(x)
+        # x = F.leaky_relu(self.fc2(x))
         # matrix = self.fc3(x)
         out = self.fc4(x)
         # task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)

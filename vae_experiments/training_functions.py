@@ -27,14 +27,42 @@ def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
     return loss
 
 
+def find_best_starting_point(local_vae, task_loader, task_id):
+    if task_id == 0:
+        return 0
+    if task_id == 1:
+        return 0
+    with torch.no_grad():
+        loss = nn.MSELoss()
+        losses = torch.zeros(task_id)
+        for iteration, batch in enumerate(task_loader):
+            x = batch[0].to(local_vae.device)
+            y = batch[1]  # .to(local_vae.device)
+            batch_size = len(x)
+            noise = torch.randn([batch_size, local_vae.latent_size]).to(local_vae.device).repeat([task_id, 1])
+            task_ids = torch.Tensor([[task] * batch_size for task in range(task_id)]).view(-1)
+            recon_x, _, _, _ = local_vae(x.repeat([task_id, 1, 1, 1]), task_ids, y.repeat([task_id]),
+                                         translate_noise=True, noise=noise)
+            for task in range(task_id):
+                losses[task] += (loss(x, recon_x[task * batch_size:(task + 1) * batch_size]))
+            if iteration > 10:
+                break
+        print(f"Starting points_losses:{losses}")
+    return torch.argmin(losses).item()
+
+
 def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100, use_lap_loss=False):
     local_vae.train()
+    local_vae.translator.train()
     # if task_id == 0:
     #     translate_noise = False
     # else:
-    translate_noise = False
-    optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.005)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
+    translate_noise = True
+    starting_point = find_best_starting_point(local_vae, task_loader, task_id)
+    print(f"Selected {starting_point} as staring point for task {task_id}")
+    local_vae.starting_point = starting_point
+    optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.0005)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     table_tmp = torch.zeros(n_classes, dtype=torch.long)
     lap_loss = LapLoss(device=local_vae.device) if use_lap_loss else None
 
@@ -45,7 +73,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
 
             x = batch[0].to(local_vae.device)
             y = batch[1]  # .to(local_vae.device)
-            recon_x, mean, log_var, z = local_vae(x, task_id, y, translate_noise=translate_noise)
+            recon_x, mean, log_var, z = local_vae(x, starting_point, y, translate_noise=translate_noise)
 
             loss = loss_fn(recon_x, x, mean, log_var, lap_loss)
 
@@ -92,16 +120,17 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
     # local_vae.translator.train()
     # frozen_translator = copy.deepcopy(curr_global_decoder.translator)
     # frozen_translator.eval()
-    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.005)
+    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     criterion = nn.MSELoss(reduction='sum')
     embedding_loss_criterion = nn.MSELoss(reduction='sum')
     class_samplers = prepare_class_samplres(task_id + 1, class_table)
+    local_starting_point = torch.zeros([batch_size]) + local_vae.starting_point
     task_ids_local = torch.zeros([batch_size]) + task_id
-
     for epoch in range(n_epochs):
         losses = []
         start = time.time()
+        sum_changed = 0
         for iteration in range(n_iterations):
             # Building dataset from previous global model and local model
             recon_prev, classes_prev, z_prev, task_ids_prev, embeddings_prev = generate_previous_data(
@@ -110,7 +139,8 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
                 n_tasks=task_id,
                 n_img=batch_size * task_id,
                 return_z=True,
-                translate_noise=task_id != 1,  # Do not translate noise when generating data from 0-task in the 1st task
+                translate_noise=True,
+                # task_id != 1,  # Do not translate noise when generating data from 0-task in the 1st task
                 same_z=train_same_z)
 
             if train_same_z:
@@ -121,17 +151,18 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
                 sampled_classes_local = class_samplers[-1].sample([batch_size])
                 if not train_same_z:
                     z_local = torch.randn([batch_size, local_vae.latent_size]).to(curr_global_decoder.device)
-                recon_local = local_vae.decoder(z_local, task_ids_local, sampled_classes_local,
-                                                translate_noise=False)
+                recon_local = local_vae.decoder(z_local, local_starting_point, sampled_classes_local,
+                                                translate_noise=True)
 
             z_concat = torch.cat([z_prev, z_local])
             task_ids_concat = torch.cat([task_ids_prev, task_ids_local])
             class_concat = torch.cat([classes_prev, sampled_classes_local])
-            if epoch > 10:
+            if epoch > 20:
                 with torch.no_grad():
                     prev_noise_translated = global_decoder.translator(z_prev, task_ids_prev)
                     current_noise_translated = global_decoder.translator(z_local, task_ids_local)
-                    noise_diff_threshold = current_noise_translated.std()  # 3
+                    noise_diff_threshold = current_noise_translated.std() * 2  # * 2.5  # 3
+
                     for prev_task_id in range(task_id):
                         selected_task_ids = torch.where(task_ids_prev == prev_task_id)[0]
                         selected_task_ids = selected_task_ids[:len(current_noise_translated)]
@@ -142,8 +173,8 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
                             imgs_task[noises_distances < noise_diff_threshold] = recon_local[:len(selected_task_ids)][
                                 noises_distances < noise_diff_threshold]
                             recon_prev[selected_task_ids] = imgs_task
-                            print(
-                                f"Epoch: {epoch} - changing {(noises_distances < noise_diff_threshold).sum()} from {prev_task_id} to {task_id}")
+                            sum_changed = (noises_distances < noise_diff_threshold).sum()
+                            print(f"Epoch: {epoch} - changing {sum_changed} from {prev_task_id} to {task_id}")
 
             recon_concat = torch.cat([recon_prev, recon_local])
 
@@ -177,5 +208,4 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
         if (epoch % 1 == 0):
             print("Epoch: {}/{}, loss: {}, took: {} s".format(epoch, n_epochs, np.mean(losses), time.time() - start))
 
-    local_vae.decoder = copy.deepcopy(global_decoder)
     return global_decoder

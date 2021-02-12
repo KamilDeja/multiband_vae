@@ -4,12 +4,13 @@ import numpy as np
 import torch
 
 
-class BitUnpacker: 
+class BitUnpacker:
     results_map = {}
 
     @classmethod
     def unpackbits(cls, x, num_bits):
         with torch.no_grad():
+            x += 1
             if num_bits == 0:
                 return torch.Tensor([])
 
@@ -25,6 +26,7 @@ class BitUnpacker:
 
             return (x & mask).bool().float()
 
+
 def prepare_class_samplres(task_id, class_table):
     ########### Maybe compute only once and pass to the function?
     class_samplers = []
@@ -35,14 +37,18 @@ def prepare_class_samplres(task_id, class_table):
 
 
 def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_img=5, same_z=False,
-                 translate_noise=True, suffix=""):
+                 translate_noise=True, suffix="", starting_point=None):
     curr_global_decoder.eval()
     if same_z:
         z = torch.randn([n_img, curr_global_decoder.latent_size]).repeat([n_tasks + 1, 1]).to(
             curr_global_decoder.device)
     else:
         z = torch.randn([n_img * (n_tasks + 1), curr_global_decoder.latent_size]).to(curr_global_decoder.device)
-    task_ids = np.repeat(list(range(n_tasks + 1)), n_img)
+
+    if starting_point != None:
+        task_ids = np.repeat(starting_point, n_img * (n_tasks + 1))
+    else:
+        task_ids = np.repeat(list(range(n_tasks + 1)), n_img)
     task_ids = torch.from_numpy(task_ids).float()
     class_samplers = prepare_class_samplres(n_tasks + 1, class_table)
 
@@ -58,7 +64,7 @@ def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_i
                      axes_pad=0.5,
                      )
 
-    for ax, im, target in zip(grid, example, task_ids.cpu().detach().numpy()):#sampled_classes):
+    for ax, im, target in zip(grid, example, task_ids.cpu().detach().numpy()):  # sampled_classes):
         im = np.swapaxes(im, 0, 2)
         im = np.swapaxes(im, 0, 1)
         ax.imshow(im.squeeze())
@@ -79,7 +85,7 @@ def generate_images(curr_global_decoder, z, task_ids, y, return_emb=False, trans
 
 def generate_noise_for_previous_data(n_img, n_task, latent_size, tasks_dist, device, same_z=False):
     if same_z:
-        z_max = torch.randn([max(tasks_dist)*2, latent_size]).to(device)
+        z_max = torch.randn([max(tasks_dist) * 2, latent_size]).to(device)
         z = []
         for n_img in tasks_dist:
             z.append(z_max[:n_img])
