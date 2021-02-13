@@ -106,18 +106,22 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
                        range(len(split_boundaries) - 1)}
 
     if num_batches == 5:
-        batch_split = {
-            0: [2, 3],
-            1: [0, 1],
-            2: [2, 3],
-            3: [0, 1],
-            4: [6, 7]
-            # 0: [0, 1],
-            # 1: [2, 3],
-            # 2: [4, 5],
-            # 3: [6, 7],
-            # 4: [8, 9]
-        }
+        if random_mini_shuffle:
+            batch_split = {
+                0: [2, 3],
+                1: [0, 1],
+                2: [2, 3],
+                3: [0, 1],
+                4: [6, 7]
+            }
+        else:
+            batch_split = {
+                0: [0, 1],
+                1: [2, 3],
+                2: [4, 5],
+                3: [6, 7],
+                4: [8, 9]
+            }
     elif num_batches == 1:
         batch_split = {
             0: range(10)
