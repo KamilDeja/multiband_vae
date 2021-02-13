@@ -10,8 +10,8 @@ from vae_experiments.training_functions import loss_fn
 
 
 def train_with_replay(args, local_vae, task_loader, task_id, class_table):
-    optimizer = torch.optim.Adam(local_vae.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+    optimizer = torch.optim.Adam(list(local_vae.parameters()), lr=0.001)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
     frozen_model = copy.deepcopy(local_vae.decoder)
     frozen_model.eval()
     local_vae.train()
@@ -32,16 +32,14 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
                 recon_prev, recon_classes, _, task_ids_prev, _ = generate_previous_data(frozen_model,
                                                                                         class_table=class_table,
                                                                                         n_tasks=task_id,
-                                                                                        n_img=task_id * x.size(
-                                                                                            0),
-                                                                                        translate_noise=False,
+                                                                                        n_img=task_id * x.size(0),
+                                                                                        translate_noise=True,
                                                                                         return_z=True)
-                task_ids = torch.cat(
-                    [torch.zeros(x.size(0)) + task_id, task_ids_prev], dim=0)
+                task_ids = torch.cat([torch.zeros(x.size(0)) + task_id, task_ids_prev], dim=0)
                 x = torch.cat([x, recon_prev], dim=0)
                 y = torch.cat([y.view(-1), recon_classes.to(local_vae.device)], dim=0)
 
-            recon_x, mean, log_var, z = local_vae(x, task_ids, y, translate_noise=False)
+            recon_x, mean, log_var, z = local_vae(x, task_ids, y, translate_noise=True)
 
             loss = loss_fn(recon_x, x, mean, log_var)
 

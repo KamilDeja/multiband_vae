@@ -50,7 +50,7 @@ def run(args):
     #
 
     if args.training_procedure == "replay":
-        from vae_experiments import models_definition_replay as models_definition
+        from vae_experiments import models_definition  # models_definition_replay as models_definition
     else:
         from vae_experiments import models_definition
     # Calculate constants
@@ -77,18 +77,14 @@ def run(args):
     fid_local_vae = OrderedDict()
 
     # Prepare VAE
-    if args.training_procedure == "multiband":
-        local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
-                                          n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
-                                          cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
-                                          device=device, standard_embeddings=args.standard_embeddings,
-                                          trainable_embeddings=args.trainable_embeddings,
-                                          in_size=train_dataset[0][0].size()[1]).to(device)
-    elif args.training_procedure == "replay":
-        local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
-                                          n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
-                                          cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
-                                          device=device, in_size=train_dataset[0][0].size()[1]).to(device)
+    local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
+                                      n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
+                                      cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
+                                      device=device, standard_embeddings=args.standard_embeddings,
+                                      trainable_embeddings=args.trainable_embeddings,
+                                      fc=args.fc,
+                                      in_size=train_dataset[0][0].size()[1]).to(device)
+    translate_noise = True
 
     print(local_vae)
     class_table = torch.zeros(n_tasks, n_classes, dtype=torch.long)
@@ -106,9 +102,10 @@ def run(args):
                                      num_workers=args.workers)
         val_loaders.append(val_loader)
 
+    labels_tasks_str = "_".join(["_".join(str(label) for label in labels_tasks[task]) for task in labels_tasks])
     validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
                           stats_file_name=
-                          f"seed_{args.seed}_f_split_{args.first_split_size}_split_{args.other_split_size}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}",
+                          f"seed_{args.seed}_labels_{labels_tasks_str}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}",
                           score_model_device=device, dataloaders=val_loaders)
     curr_global_decoder = None
     for task_id in range(len(task_names)):
@@ -139,12 +136,14 @@ def run(args):
         # Plotting results for already learned tasks
         if not args.gen_load_pretrained_models:
             vae_utils.plot_results(args.experiment_name, curr_global_decoder, class_table, task_id,
-                                   translate_noise=True, same_z=True)
-            vae_utils.plot_results(args.experiment_name, local_vae.decoder, class_table, task_id,
-                                   translate_noise=True, suffix="_local_vae", same_z=True,
-                                   starting_point=local_vae.starting_point)
+                                   translate_noise=translate_noise, same_z=True)
+            if args.training_procedure == "multiband":
+                vae_utils.plot_results(args.experiment_name, local_vae.decoder, class_table, task_id,
+                                       translate_noise=translate_noise, suffix="_local_vae", same_z=True,
+                                       starting_point=local_vae.starting_point)
+                torch.save(local_vae.state_dict(), f"results/{args.experiment_name}/model{task_id}_local_vae")
+
             torch.save(curr_global_decoder.state_dict(), f"results/{args.experiment_name}/model{task_id}_curr_decoder")
-            torch.save(local_vae.state_dict(), f"results/{args.experiment_name}/model{task_id}_local_vae")
 
         # local_vae.decoder = curr_global_decoder
 
@@ -157,18 +156,20 @@ def run(args):
             for j in range(task_id + 1):
                 fid_table[j][task_name] = -1
         else:
-            fid_result, _, _ = validator.compute_fid(curr_global_decoder=local_vae.decoder,
-                                                     class_table=class_table,
-                                                     task_id=task_id, translate_noise=True,
-                                                     starting_point=local_vae.starting_point)
-            fid_local_vae[task_id] = fid_result
-            print(f"FID local VAE: {fid_result}")
+            if args.training_procedure == "multiband":
+                fid_result, _, _ = validator.compute_fid(curr_global_decoder=local_vae.decoder,
+                                                         class_table=class_table,
+                                                         task_id=task_id, translate_noise=translate_noise,
+                                                         starting_point=local_vae.starting_point)
+                fid_local_vae[task_id] = fid_result
+                print(f"FID local VAE: {fid_result}")
             for j in range(task_id + 1):
                 val_name = task_names[j]
                 print('validation split name:', val_name)
                 fid_result, precision, recall = validator.compute_fid(curr_global_decoder=curr_global_decoder,
                                                                       class_table=class_table,
-                                                                      task_id=j, translate_noise=True)  # task_id != 0)
+                                                                      task_id=j,
+                                                                      translate_noise=translate_noise)  # task_id != 0)
                 fid_table[j][task_name] = fid_result
                 precision_table[j][task_name] = precision
                 recall_table[j][task_name] = recall
@@ -240,6 +241,10 @@ def get_args(argv):
                         help="Train multiband with standard embeddings instead of matrix")
     parser.add_argument('--trainable_embeddings', dest='trainable_embeddings', default=False, action='store_true',
                         help="Train multiband with trainable embeddings instead of matrix")
+    parser.add_argument('--fc', default=False, action='store_true',
+                        help="Use only dense layers in VAE model")
+    parser.add_argument('--n_sigma', default=0.0, type=float,
+                        help="Distance between examples to merge")
 
     args = parser.parse_args(argv)
 
