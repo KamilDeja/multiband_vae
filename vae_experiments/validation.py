@@ -18,13 +18,13 @@ class Validator:
 
         print("Preparing validator")
         if dataset in ["MNIST", "FashionMNIST"]:
-            from vae_experiments.evaluation_models.lenet_emnist import Model
+            from vae_experiments.evaluation_models.lenet import Model
             net = Model()
-            model_path = "vae_experiments/evaluation_models/lenet_emnist"  # + dataset
+            model_path = "vae_experiments/evaluation_models/lenet"  # + dataset
             net.load_state_dict(torch.load(model_path))
             net.to(device)
             net.eval()
-            self.dims = 128
+            self.dims = 84#128
             self.score_model_func = net.part_forward
         elif dataset.lower() == "celeba":
             from vae_experiments.evaluation_models.inception import InceptionV3
@@ -118,4 +118,10 @@ class Validator:
             distribution_orig = np.array(np.concatenate(distribution_orig)).reshape(-1, self.dims)
             np.save(stats_file_path, distribution_orig)
 
-        return calculate_frechet_distance(distribution_gen, distribution_orig)
+        precision, recall = compute_prd_from_embedding(
+            eval_data=distribution_orig[np.random.choice(len(distribution_orig), len(distribution_gen), False)],
+            ref_data=distribution_gen)
+        precision, recall = prd_to_max_f_beta_pair(precision, recall)
+        print(f"Precision:{precision},recall: {recall}")
+
+        return calculate_frechet_distance(distribution_gen, distribution_orig), precision, recall

@@ -109,8 +109,8 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
         if random_mini_shuffle:
             batch_split = {
                 0: [2, 3],
-                1: [0, 1],
-                2: [2, 3],
+                1: [2, 0, 1],
+                2: [4, 5, 6],
                 3: [0, 1],
                 4: [6, 7]
             }

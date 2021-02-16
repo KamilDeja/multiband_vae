@@ -221,6 +221,8 @@ def get_args(argv):
 
     # Generative network - multiband vae
     parser.add_argument('--gen_batch_size', type=int, default=50)
+    parser.add_argument('--local_lr', type=float, default=0.001)
+    parser.add_argument('--global_lr', type=float, default=0.0001)
     parser.add_argument('--gen_n_dim_coding', type=int, default=4,
                         help="Number of bits used to code task id in binary autoencoder")
     parser.add_argument('--gen_p_coding', type=int, default=9,

@@ -11,18 +11,19 @@ from vae_experiments.vae_utils import *
 import copy
 
 mse_loss = nn.MSELoss(reduction="sum")
+bce_loss = nn.BCELoss(reduction="sum")
 
 
-def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None):
-    # marginal_likelihood = F.binary_cross_entropy(y, x_target, reduction='sum') / y.size(0)
-    marginal_likelihood = mse_loss(y, x_target) / y.size(0)
-
+def loss_fn(y, x_target, mu, sigma, lap_loss_fn=None, binary_part_size = 2):
+    marginal_likelihood = bce_loss(y, x_target) / y.size(0)
+    # F.binary_cross_entropy(y, x_target, reduction='sum') / y.size(0)
+    # marginal_likelihood = mse_loss(y, x_target) / y.size(0)
     KL_divergence = -0.5 * torch.sum(1 + sigma - mu.pow(2) - sigma.exp()) / y.size(0)
     if lap_loss_fn:
         lap_loss = lap_loss_fn(y, x_target)
         loss = marginal_likelihood + x_target[0].size()[1] * x_target[0].size()[1] * lap_loss + KL_divergence
     else:
-        loss = marginal_likelihood + KL_divergence
+        loss = marginal_likelihood + 5 * KL_divergence
 
     return loss
 
@@ -51,7 +52,8 @@ def find_best_starting_point(local_vae, task_loader, task_id):
     return torch.min(losses), torch.argmin(losses).item()
 
 
-def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100, use_lap_loss=False):
+def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100, use_lap_loss=False,
+                          local_start_lr=0.001):
     local_vae.train()
     local_vae.translator.train()
     # if task_id == 0:
@@ -61,7 +63,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
     min_loss, starting_point = find_best_starting_point(local_vae, task_loader, task_id)
     print(f"Selected {starting_point} as staring point for task {task_id}")
     local_vae.starting_point = starting_point
-    lr = min_loss * 0.001
+    lr = min_loss * local_start_lr
     print(f"lr set to: {lr}")
     scheduler_rate = 0.95
     optimizer = torch.optim.Adam(list(local_vae.parameters()) + list(local_vae.translator.parameters()), lr=lr)
@@ -78,7 +80,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
     for epoch in range(n_epochs):
         losses = []
         start = time.time()
-        if epoch == max(n_epochs // 10, 5):
+        if (task_id != 0) and (epoch == min(10, max(n_epochs // 10, 5))):
             optimizer = torch.optim.Adam(list(local_vae.parameters()) + list(local_vae.translator.parameters()),
                                          lr=lr)
             scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=scheduler_rate)
@@ -109,8 +111,8 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
 
 
 def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
-                         models_definition, n_sigma, n_epochs=100, n_iterations=30, batch_size=1000, train_same_z=False,
-                         new_global_decoder=False):
+                         models_definition, n_sigma, n_epochs=100, n_iterations=30, batch_size=1000, train_same_z=True,
+                         new_global_decoder=False, global_lr=0.0001):
     if new_global_decoder:
         global_decoder = models_definition.Decoder(latent_size=curr_global_decoder.latent_size, d=curr_global_decoder.d,
                                                    p_coding=curr_global_decoder.p_coding,
@@ -135,9 +137,10 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
     # local_vae.translator.train()
     # frozen_translator = copy.deepcopy(curr_global_decoder.translator)
     # frozen_translator.eval()
-    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(global_decoder.parameters(), lr=global_lr)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     criterion = nn.MSELoss(reduction='sum')
+    # criterion = nn.BCELoss(reduction='sum')
     embedding_loss_criterion = nn.MSELoss(reduction='sum')
     class_samplers = prepare_class_samplres(task_id + 1, class_table)
     local_starting_point = torch.zeros([batch_size]) + local_vae.starting_point
@@ -172,24 +175,27 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
             z_concat = torch.cat([z_prev, z_local])
             task_ids_concat = torch.cat([task_ids_prev, task_ids_local])
             class_concat = torch.cat([classes_prev, sampled_classes_local])
-            if epoch > 5:
-                with torch.no_grad():
-                    prev_noise_translated = global_decoder.translator(z_prev, task_ids_prev)
-                    current_noise_translated = global_decoder.translator(z_local, task_ids_local)
-                    noise_diff_threshold = current_noise_translated.std() * n_sigma  # .5  # * 2.5  # 3
-
-                    for prev_task_id in range(task_id):
-                        selected_task_ids = torch.where(task_ids_prev == prev_task_id)[0]
-                        selected_task_ids = selected_task_ids[:len(current_noise_translated)]
-                        noises_distances = torch.pairwise_distance(prev_noise_translated[selected_task_ids],
-                                                                   current_noise_translated[:len(selected_task_ids)])
-                        if (noises_distances < noise_diff_threshold).sum() > 0:
-                            imgs_task = recon_prev[selected_task_ids]
-                            imgs_task[noises_distances < noise_diff_threshold] = recon_local[:len(selected_task_ids)][
-                                noises_distances < noise_diff_threshold]
-                            recon_prev[selected_task_ids] = imgs_task
-                            # sum_changed = (noises_distances < noise_diff_threshold).sum()
-                            sum_changed[prev_task_id] += (noises_distances < noise_diff_threshold).sum().item()
+            cos_sim = torch.nn.CosineSimilarity()
+            # if epoch > 10:
+            with torch.no_grad():
+                prev_noise_translated = global_decoder.translator(z_prev, task_ids_prev)
+                # current_noise_translated = local_vae.decoder.translator(z_local, local_starting_point)#@TODO check this?
+                current_noise_translated = global_decoder.translator(z_local, task_ids_local)
+                noise_diff_threshold = n_sigma  # current_noise_translated.std() * n_sigma  # .5  # * 2.5  # 3
+                # @TODO check for bug!
+                for prev_task_id in range(task_id):
+                    selected_task_ids = torch.where(task_ids_prev == prev_task_id)[0]
+                    selected_task_ids = selected_task_ids[:len(current_noise_translated)]
+                    noises_distances = cos_sim(prev_noise_translated[selected_task_ids],
+                                               current_noise_translated[:len(selected_task_ids)])
+                    if (noises_distances > noise_diff_threshold).sum() > 0:
+                        imgs_task = recon_prev[selected_task_ids]
+                        imgs_task[noises_distances > noise_diff_threshold] = recon_local[:len(selected_task_ids)][
+                            noises_distances > noise_diff_threshold]
+                        recon_prev[selected_task_ids] = imgs_task
+                        # sum_changed = (noises_distances < noise_diff_threshold).sum()
+                        sum_changed[prev_task_id] += (noises_distances > noise_diff_threshold).sum().item()
+                        # print(noises_distances)
 
             recon_concat = torch.cat([recon_prev, recon_local])
 

@@ -63,8 +63,12 @@ def evaluate_directory(args, device):
                           score_model_device=device, dataloaders=val_loaders)
 
     fid_table = OrderedDict()
+    precision_table = OrderedDict()
+    recall_table = OrderedDict()
     for task_id in range(n_batches):
         fid_table[task_id] = OrderedDict()
+        precision_table[task_id] = OrderedDict()
+        recall_table[task_id] = OrderedDict()
         to_plot = []
         print(f"Validation for task: {task_id}")
         for j in range(task_id + 1):
@@ -72,10 +76,12 @@ def evaluate_directory(args, device):
             # print('validation split name:', val_name)
             examples = np.load(f"{args.directory}/generations_{task_id + 1}_{j + 1}.npy")
             to_plot.append(examples[:5])
-            fid_result = validator.compute_fid_from_examples(args, examples, j)  # task_id != 0)
+            fid_result, precision, recall = validator.compute_fid_from_examples(args, examples, j)  # task_id != 0)
             fid_table[j][task_id] = fid_result
+            precision_table[j][task_id] = precision
+            recall_table[j][task_id] = recall
             print(f"FID task {j}: {fid_result}")
-        if args.dataset.lower()  == "mnist":
+        if args.dataset.lower() == "mnist":
             to_plot = np.concatenate(to_plot).reshape(-1, 1, 28, 28)
         elif args.dataset.lower() == "celeba":
             to_plot = np.concatenate(to_plot).reshape(-1, 3, 64, 64)
@@ -83,7 +89,7 @@ def evaluate_directory(args, device):
             raise NotImplementedError
         plot_examples(args.experiment_name, to_plot, task_id)
 
-    return fid_table
+    return fid_table, precision_table, recall_table
 
 
 def get_args(argv):
@@ -129,8 +135,11 @@ if __name__ == '__main__':
     os.makedirs(f"{args.rpath}{args.experiment_name}", exist_ok=True)
     with open(f"{args.rpath}{args.experiment_name}/args.txt", "w") as text_file:
         text_file.write(str(args))
-    acc_val = evaluate_directory(args, device)
-    acc_val_dict = {}
+    acc_val, precision, recall = evaluate_directory(args, device)
+    acc_val_dict, acc_test, precision_table, recall_table = {}, {}, {}, {}
     acc_val_dict[0] = acc_val
-    np.save(f"{args.rpath}{args.experiment_name}/acc_val.npy", acc_val_dict)
-    plot_final_results([args.experiment_name])
+    precision_table[0], recall_table[0] = precision, recall
+    np.save(f"{args.rpath}{args.experiment_name}/fid.npy", acc_val_dict)
+    np.save(f"{args.rpath}{args.experiment_name}/precision.npy", precision_table)
+    np.save(f"{args.rpath}{args.experiment_name}/recall.npy", recall_table)
+    plot_final_results([args.experiment_name], type="fid")
