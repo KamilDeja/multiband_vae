@@ -46,7 +46,8 @@ def run(args):
         batch_data, batch_labels = batch[0], batch[1]
         train_data.append(batch_data.numpy())
         labels.append(batch_labels.numpy())
-        np.save(f"{save_path}/{idx}", batch_data.numpy())
+        np.save(f"{save_path}/data_{idx}", batch_data.numpy())
+        np.save(f"{save_path}/labels_{idx}", batch_labels.numpy())
 
     # train_data_np = np.stack(train_data)
     # np.save(f"{save_path}/{args.dataset.lower()}_{len(train_data)}_batches_random_{args.random_split}_train",train_data_np)

@@ -75,6 +75,7 @@ def evaluate_directory(args, device):
             val_name = j
             # print('validation split name:', val_name)
             examples = np.load(f"{args.directory}/generations_{task_id + 1}_{j + 1}.npy")
+            print(examples.shape)
             to_plot.append(examples[:5])
             fid_result, precision, recall = validator.compute_fid_from_examples(args, examples, j)  # task_id != 0)
             fid_table[j][task_id] = fid_result

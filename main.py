@@ -77,7 +77,8 @@ def run(args):
     fid_local_vae = OrderedDict()
 
     # Prepare VAE
-    local_vae = models_definition.VAE(latent_size=args.gen_latent_size, d=args.gen_d, p_coding=args.gen_p_coding,
+    local_vae = models_definition.VAE(latent_size=args.gen_latent_size, binary_latent_size=args.binary_latent_size, d=args.gen_d,
+                                      p_coding=args.gen_p_coding,
                                       n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
                                       cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
                                       device=device, standard_embeddings=args.standard_embeddings,
@@ -136,10 +137,10 @@ def run(args):
         # Plotting results for already learned tasks
         if not args.gen_load_pretrained_models:
             vae_utils.plot_results(args.experiment_name, curr_global_decoder, class_table, task_id,
-                                   translate_noise=translate_noise, same_z=True)
+                                   translate_noise=translate_noise, same_z=False)
             if args.training_procedure == "multiband":
                 vae_utils.plot_results(args.experiment_name, local_vae.decoder, class_table, task_id,
-                                       translate_noise=translate_noise, suffix="_local_vae", same_z=True,
+                                       translate_noise=translate_noise, suffix="_local_vae", same_z=False,
                                        starting_point=local_vae.starting_point)
                 torch.save(local_vae.state_dict(), f"results/{args.experiment_name}/model{task_id}_local_vae")
 
@@ -231,7 +232,8 @@ def get_args(argv):
                         help="Number of bits used to code task id in binary autoencoder")
     parser.add_argument('--gen_cond_p_coding', type=int, default=9,
                         help="Prime number used to calculated codes in binary autoencoder")
-    parser.add_argument('--gen_latent_size', type=int, default=10, help="Latent size in binary autoencoder")
+    parser.add_argument('--gen_latent_size', type=int, default=10, help="Latent size in VAE")
+    parser.add_argument('--binary_latent_size', type=int, default=4, help="Binary latent size in VAE")
     parser.add_argument('--gen_d', type=int, default=8, help="Size of binary autoencoder")
     parser.add_argument('--gen_ae_epochs', type=int, default=20,
                         help="Number of epochs to train local variational autoencoder")
@@ -245,8 +247,8 @@ def get_args(argv):
                         help="Train multiband with trainable embeddings instead of matrix")
     parser.add_argument('--fc', default=False, action='store_true',
                         help="Use only dense layers in VAE model")
-    parser.add_argument('--n_sigma', default=0.0, type=float,
-                        help="Distance between examples to merge")
+    parser.add_argument('--cosine_sim', default=1.0, type=float,
+                        help="Cosine similarity between examples to merge")
 
     args = parser.parse_args(argv)
 

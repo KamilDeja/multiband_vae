@@ -24,7 +24,7 @@ class Validator:
             net.load_state_dict(torch.load(model_path))
             net.to(device)
             net.eval()
-            self.dims = 84#128
+            self.dims = 84  # 128
             self.score_model_func = net.part_forward
         elif dataset.lower() == "celeba":
             from vae_experiments.evaluation_models.inception import InceptionV3
@@ -64,6 +64,10 @@ class Validator:
                 x = batch[0].to(self.device)
                 y = batch[1]
                 z = torch.randn([len(y), curr_global_decoder.latent_size]).to(self.device)
+                bin_z = torch.bernoulli(curr_global_decoder.ones_distribution[task_id].repeat([len(y), 1])).to(
+                    self.device)
+                # bin_z = torch.rand([len(y), curr_global_decoder.binary_latent_size]).to(self.device)
+                bin_z = bin_z * 2 - 1
                 tasks_sampled = []
                 y = y.sort()[0]
                 labels, counts = torch.unique_consecutive(y, return_counts=True)
@@ -73,7 +77,7 @@ class Validator:
                 task_ids = torch.cat(tasks_sampled)
                 if starting_point != None:
                     task_ids = torch.zeros(len(task_ids)) + starting_point
-                example = generate_images(curr_global_decoder, z, task_ids, y, translate_noise=translate_noise)
+                example = generate_images(curr_global_decoder, z, bin_z, task_ids, y, translate_noise=translate_noise)
                 if not precalculated_statistics:
                     distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
                 distribution_gen.append(self.score_model_func(example))
@@ -117,10 +121,10 @@ class Validator:
         if not precalculated_statistics:
             distribution_orig = np.array(np.concatenate(distribution_orig)).reshape(-1, self.dims)
             np.save(stats_file_path, distribution_orig)
-
+        print(f"Orig:{len(distribution_orig)}, Gen:{len(distribution_gen)}")
         precision, recall = compute_prd_from_embedding(
-            eval_data=distribution_orig[np.random.choice(len(distribution_orig), len(distribution_gen), False)],
-            ref_data=distribution_gen)
+            eval_data=distribution_orig,
+            ref_data=distribution_gen[np.random.choice(len(distribution_gen), len(distribution_orig), False)])
         precision, recall = prd_to_max_f_beta_pair(precision, recall)
         print(f"Precision:{precision},recall: {recall}")
 

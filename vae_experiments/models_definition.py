@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,32 +15,45 @@ def one_hot_conditionals(y, device, cond_dim):
 
 
 class VAE(nn.Module):
-    def __init__(self, latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding, cond_dim,
-                 device, in_size, fc,
-                 standard_embeddings=False,
+    def __init__(self, latent_size, binary_latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding,
+                 cond_dim, device, in_size, fc, standard_embeddings=False,
                  trainable_embeddings=False):  # d defines the number of filters in conv layers of decoder and encoder
         super().__init__()
         self.p_coding = p_coding
         self.n_dim_coding = n_dim_coding
         self.latent_size = latent_size
+        self.binary_latent_size = binary_latent_size
         self.device = device
         self.standard_embeddings = standard_embeddings
         self.in_size = in_size
         self.starting_point = None
+        self.temp = 0.001
 
-        self.encoder = Encoder(latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device, in_size, fc)
+        self.encoder = Encoder(latent_size, binary_latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device,
+                               in_size, fc)
         if standard_embeddings:
             self.translator = Translator_embeddings(n_dim_coding, p_coding, latent_size, device)
         else:
-            self.translator = Translator(n_dim_coding, p_coding, latent_size, device, d=d)
-        self.decoder = Decoder(latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding, cond_dim,
+            self.translator = Translator(n_dim_coding, p_coding, latent_size, binary_latent_size, device, d=d)
+        self.decoder = Decoder(latent_size, binary_latent_size, d, p_coding, n_dim_coding, cond_p_coding,
+                               cond_n_dim_coding, cond_dim,
                                self.translator, device, standard_embeddings=standard_embeddings,
                                trainable_embeddings=trainable_embeddings, in_size=in_size, fc=fc)
 
-    def forward(self, x, task_id, conds, translate_noise=True, noise=None):
+    def forward(self, x, task_id, conds, temp, translate_noise=True, noise=None):
         batch_size = x.size(0)
-        means, log_var = self.encoder(x, conds)
-
+        if temp == None:
+            hard = True
+            temp = 1
+        else:
+            hard = False
+        means, log_var, binary_out = self.encoder(x, conds)
+        binary_out_reverse = - binary_out
+        if self.binary_latent_size > 0:
+            binary_out_merged = torch.stack([binary_out, binary_out_reverse], -1)
+            binary_out = F.gumbel_softmax(binary_out_merged, tau=temp, hard=hard, dim=2)[:, :, 0]
+        binary_out = binary_out * 2 - 1
+        # print(binary_out)
         std = torch.exp(0.5 * log_var)
         if noise == None:
             eps = torch.randn([batch_size, self.latent_size]).to(self.device)
@@ -50,14 +65,15 @@ class VAE(nn.Module):
                 task_id = torch.zeros([batch_size, 1]) + task_id
             else:
                 task_id = torch.zeros([batch_size, 1])
-        recon_x = self.decoder(z, task_id, conds, translate_noise=translate_noise)
+        recon_x = self.decoder(z, binary_out, task_id, conds, translate_noise=translate_noise)
 
-        return recon_x, means, log_var, z
+        return recon_x, means, log_var, z, binary_out
 
 
 class Encoder(nn.Module):
 
-    def __init__(self, latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device, in_size, fc):
+    def __init__(self, latent_size, binary_latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device, in_size,
+                 fc):
         super().__init__()
         assert cond_dim == 10  # change cond_n_dim_coding
         self.d = d
@@ -80,6 +96,7 @@ class Encoder(nn.Module):
             self.fc_3 = nn.Linear(self.d * self.scaler, self.d * self.scaler // 2)
             self.linear_means = nn.Linear(self.d * self.scaler // 2, latent_size)
             self.linear_log_var = nn.Linear(self.d * self.scaler // 2, latent_size)
+            self.linear_binary = nn.Linear(self.d * self.scaler // 2, binary_latent_size)
         else:
             if self.in_size == 28:
                 self.conv1 = nn.Conv2d(in_channels=1, out_channels=self.d, kernel_size=4, stride=2, padding=1,
@@ -109,6 +126,7 @@ class Encoder(nn.Module):
 
             self.linear_means = nn.Linear(self.d * 4, latent_size)
             self.linear_log_var = nn.Linear(self.d * 4, latent_size)
+            self.linear_binary = nn.Linear(self.d * 4, binary_latent_size, bias=False)
 
     def forward(self, x, conds):
         with torch.no_grad():
@@ -141,12 +159,13 @@ class Encoder(nn.Module):
             x = F.leaky_relu(self.fc(x))
         means = self.linear_means(x)
         log_vars = self.linear_log_var(x)
-        return means, log_vars
+        binary_out = self.linear_binary(x)
+        return means, log_vars, binary_out
 
 
 class Decoder(nn.Module):
-    def __init__(self, latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding, cond_dim, translator,
-                 device, standard_embeddings, trainable_embeddings, in_size, fc):
+    def __init__(self, latent_size, binary_latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding,
+                 cond_dim, translator, device, standard_embeddings, trainable_embeddings, in_size, fc):
         super().__init__()
         self.d = d
         self.p_coding = p_coding
@@ -156,11 +175,13 @@ class Decoder(nn.Module):
         self.cond_dim = cond_dim
         self.device = device
         self.latent_size = latent_size
+        self.binary_latent_size = binary_latent_size
         self.translator = translator
         self.standard_embeddings = standard_embeddings
         self.trainable_embeddings = trainable_embeddings
         self.in_size = in_size
         self.fc = fc
+        self.ones_distribution = OrderedDict()  # torch.zeros(binary_latent_size)
         # self.fc0 = nn.Linear(latent_size, latent_size)
 
         if in_size == 28:
@@ -215,7 +236,7 @@ class Decoder(nn.Module):
                 self.dc_out = nn.ConvTranspose2d(self.d, 3, kernel_size=5, stride=1,
                                                  padding=2, output_padding=0, bias=False)
 
-    def forward(self, x, task_id, conds, return_emb=False, translate_noise=True):
+    def forward(self, x, binary_x, task_id, conds, return_emb=False, translate_noise=True):
         with torch.no_grad():
             if self.cond_n_dim_coding:
                 conds_coded = (conds * self.cond_p_coding) % (2 ** self.cond_n_dim_coding)
@@ -231,7 +252,7 @@ class Decoder(nn.Module):
             # task_id = torch.cat([x, task_id.to(self.device)], dim=1)
             # task_ids_enc_resized, bias = self.translator(task_id)
             # x = torch.bmm(task_ids_enc_resized, x.unsqueeze(-1)).squeeze(2) + bias
-            x = self.translator(x, task_id)
+            x = self.translator(x, binary_x, task_id)
             task_ids_enc_resized = None
             bias = None
         else:
@@ -262,28 +283,35 @@ class Decoder(nn.Module):
 
 
 class Translator(nn.Module):
-    def __init__(self, n_dim_coding, p_coding, latent_size, device, d):
+    def __init__(self, n_dim_coding, p_coding, latent_size, binary_latent_size, device, d):
         super().__init__()
         self.n_dim_coding = n_dim_coding
         self.p_coding = p_coding
         self.device = device
         self.latent_size = latent_size
+        self.binary_latent_size = binary_latent_size
         self.d = d
 
         self.fc_enc_1 = nn.Linear(n_dim_coding, n_dim_coding * 3)
         self.fc_enc_2 = nn.Linear(n_dim_coding * 3, n_dim_coding * 2)
-        self.fc1 = nn.Linear(n_dim_coding * 2 + latent_size, latent_size * self.d // 2)
+        if binary_latent_size > 0:
+            self.fc_bin_enc_1 = nn.Linear(binary_latent_size, binary_latent_size * 2)
+            self.fc_bin_enc_2 = nn.Linear(binary_latent_size * 2, binary_latent_size * 3)
+        self.fc1 = nn.Linear(n_dim_coding * 2 + latent_size + binary_latent_size * 3, latent_size * self.d // 2)
         # self.fc2 = nn.Linear(max(latent_size, 16), max(latent_size * n_dim_coding, 32))
         # self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
         # self.fc4 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size)
         self.fc4 = nn.Linear(latent_size * self.d // 2, latent_size * self.d)
 
-    def forward(self, x, task_id):
+    def forward(self, x, bin_x, task_id):
         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
         task_ids = BitUnpacker.unpackbits(codes, self.n_dim_coding).to(self.device)
         task_ids = F.leaky_relu(self.fc_enc_1(task_ids))
         task_ids = F.leaky_relu(self.fc_enc_2(task_ids))
-        x = torch.cat([x, task_ids], dim=1)
+        if self.binary_latent_size > 0:
+            bin_x = F.leaky_relu(self.fc_bin_enc_1(bin_x))
+            bin_x = F.leaky_relu(self.fc_bin_enc_2(bin_x))
+        x = torch.cat([x, bin_x, task_ids], dim=1)
         x = F.leaky_relu(self.fc1(x))
         # x = self.fc1(x)
         # x = F.leaky_relu(self.fc2(x))
