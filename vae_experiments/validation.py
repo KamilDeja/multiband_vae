@@ -72,7 +72,10 @@ class Validator:
                 y = y.sort()[0]
                 labels, counts = torch.unique_consecutive(y, return_counts=True)
                 for i, n_occ in zip(labels, counts):
-                    tasks_sampled.append(task_samplers[i].sample([n_occ]))
+                    if task_samplers[i].probs.sum() > 0:  # n_occ > 0:
+                        tasks_sampled.append(task_samplers[i].sample([n_occ]))
+                    else:
+                        tasks_sampled.append(task_samplers[class_table[task_id].argmax()].sample([n_occ]))
 
                 task_ids = torch.cat(tasks_sampled)
                 if starting_point != None:
@@ -128,4 +131,4 @@ class Validator:
         precision, recall = prd_to_max_f_beta_pair(precision, recall)
         print(f"Precision:{precision},recall: {recall}")
 
-        return calculate_frechet_distance(distribution_gen, distribution_orig), precision, recall
+        return calculate_frechet_distance(distribution_gen[np.random.choice(len(distribution_gen), len(distribution_orig), False)], distribution_orig), precision, recall

@@ -31,7 +31,8 @@ def run(args):
                                                                              num_classes=n_classes,
                                                                              random_split=args.random_split,
                                                                              random_mini_shuffle=args.random_shuffle,
-                                                                             limit_data=args.limit_data)
+                                                                             limit_data=args.limit_data,
+                                                                             dirichlet_split_alpha=args.dirichlet)
 
     # train_dataset = train_dataset_splits[0]
     train_data = []
@@ -90,6 +91,8 @@ def get_args(argv):
     parser.add_argument('--workers', type=int, default=0, help="#Thread for dataloader")
     parser.add_argument('--limit_data', type=float, default=None,
                         help="limit_data to given %")
+    parser.add_argument('--dirichlet', default=None, type=float,
+                        help="Alpha parameter for dirichlet data split")
 
     args = parser.parse_args(argv)
 

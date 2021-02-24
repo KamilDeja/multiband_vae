@@ -38,7 +38,8 @@ def run(args):
                                                                              num_classes=n_classes,
                                                                              random_split=args.random_split,
                                                                              random_mini_shuffle=args.random_shuffle,
-                                                                             limit_data=args.limit_data)
+                                                                             limit_data=args.limit_data,
+                                                                             dirichlet_split_alpha=args.dirichlet)
     # else:
     #     # from vae_experiments import models_definition_mnist as models_definition
     #     train_dataset_splits, val_dataset_splits, task_output_space = SplitGen(train_dataset, val_dataset,
@@ -77,7 +78,8 @@ def run(args):
     fid_local_vae = OrderedDict()
 
     # Prepare VAE
-    local_vae = models_definition.VAE(latent_size=args.gen_latent_size, binary_latent_size=args.binary_latent_size, d=args.gen_d,
+    local_vae = models_definition.VAE(latent_size=args.gen_latent_size, binary_latent_size=args.binary_latent_size,
+                                      d=args.gen_d,
                                       p_coding=args.gen_p_coding,
                                       n_dim_coding=args.gen_n_dim_coding, cond_p_coding=args.gen_cond_p_coding,
                                       cond_n_dim_coding=args.gen_cond_n_dim_coding, cond_dim=n_classes,
@@ -103,10 +105,13 @@ def run(args):
                                      num_workers=args.workers)
         val_loaders.append(val_loader)
 
-    labels_tasks_str = "_".join(["_".join(str(label) for label in labels_tasks[task]) for task in labels_tasks])
+    if args.dirichlet != None:
+        labels_tasks_str = "_".join(["_".join(str(label) for label in labels_tasks[task]) for task in labels_tasks])
+    else:
+        labels_tasks_str = ""
     validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
                           stats_file_name=
-                          f"seed_{args.seed}_labels_{labels_tasks_str}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}",
+                          f"seed_{args.seed}_batches_{n_batches}_labels_{labels_tasks_str}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}_dirichlet_{args.dirichlet}_limit_{args.limit_data}",
                           score_model_device=device, dataloaders=val_loaders)
     curr_global_decoder = None
     for task_id in range(len(task_names)):
@@ -142,9 +147,9 @@ def run(args):
                 vae_utils.plot_results(args.experiment_name, local_vae.decoder, class_table, task_id,
                                        translate_noise=translate_noise, suffix="_local_vae", same_z=False,
                                        starting_point=local_vae.starting_point)
-                torch.save(local_vae.state_dict(), f"results/{args.experiment_name}/model{task_id}_local_vae")
+                torch.save(local_vae, f"results/{args.experiment_name}/model{task_id}_local_vae")
 
-            torch.save(curr_global_decoder.state_dict(), f"results/{args.experiment_name}/model{task_id}_curr_decoder")
+            torch.save(curr_global_decoder, f"results/{args.experiment_name}/model{task_id}_curr_decoder")
 
         # local_vae.decoder = curr_global_decoder
 
@@ -219,10 +224,14 @@ def get_args(argv):
     parser.add_argument('--train_aug', dest='train_aug', default=False, action='store_true',
                         help="Allow data augmentation during training")
     parser.add_argument('--workers', type=int, default=0, help="#Thread for dataloader")
+    parser.add_argument('--dirichlet', default=None, type=float,
+                        help="Alpha parameter for dirichlet data split")
 
     # Generative network - multiband vae
     parser.add_argument('--gen_batch_size', type=int, default=50)
     parser.add_argument('--local_lr', type=float, default=0.001)
+    parser.add_argument('--scale_local_lr', default=False, action='store_true',
+                        help="Scale lr of local model based on the reconstruction error")
     parser.add_argument('--global_lr', type=float, default=0.0001)
     parser.add_argument('--gen_n_dim_coding', type=int, default=4,
                         help="Number of bits used to code task id in binary autoencoder")
@@ -249,6 +258,10 @@ def get_args(argv):
                         help="Use only dense layers in VAE model")
     parser.add_argument('--cosine_sim', default=1.0, type=float,
                         help="Cosine similarity between examples to merge")
+    parser.add_argument('--limit_previous', default=0.5, type=float,
+                        help="How much of previous data we want to generate each epoch")
+    parser.add_argument('--global_warmup', default=20, type=int,
+                        help="Number of epochs for global warmup - only translator training")
 
     args = parser.parse_args(argv)
 

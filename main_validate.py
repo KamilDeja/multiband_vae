@@ -41,14 +41,15 @@ def evaluate_directory(args, device):
         n_classes = 10
     else:
         n_classes = train_dataset.number_classes
-    n_batches = 5
+    n_batches = n_classes // args.other_split_size
     train_dataset_splits, val_dataset_splits, task_output_space = data_split(dataset=train_dataset,
                                                                              dataset_name=args.dataset.lower(),
                                                                              num_batches=n_batches,
                                                                              num_classes=n_classes,
                                                                              random_split=args.random_split,
                                                                              random_mini_shuffle=args.random_shuffle,
-                                                                             limit_data=args.limit_data)
+                                                                             limit_data=args.limit_data,
+                                                                             dirichlet_split_alpha=args.dirichlet)
     val_loaders = []
     for task_name in range(n_batches):
         val_data = val_dataset_splits[
@@ -104,6 +105,7 @@ def get_args(argv):
                         help="The list of gpuid, ex:--gpuid 3 1. Negative value means cpu-only")
     parser.add_argument('--seed', type=int, required=False, default=11,
                         help="Random seed. If defined all random operations will be reproducible")
+    parser.add_argument('--other_split_size', type=int, default=2)
 
     parser.add_argument('--val_batch_size', type=int, default=250)
     parser.add_argument('--dataset', type=str, default='MNIST', help="MNIST(default)|CelebA")
@@ -118,6 +120,8 @@ def get_args(argv):
     parser.add_argument('--workers', type=int, default=0, help="#Thread for dataloader")
     parser.add_argument('--limit_data', type=float, default=None,
                         help="limit_data to given %")
+    parser.add_argument('--dirichlet', default=None, type=float,
+                        help="Alpha parameter for dirichlet data split")
 
     args = parser.parse_args(argv)
     return args

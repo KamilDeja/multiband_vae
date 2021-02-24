@@ -24,7 +24,7 @@ class BitUnpacker:
 
             x = x.view(-1, 1).long()
 
-            return (x & mask).bool().float()
+            return (x & mask).bool().float() * 2 - 1
 
 
 def prepare_class_samplres(task_id, class_table):
@@ -56,7 +56,7 @@ def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_i
     else:
         z = torch.randn([n_img * (n_tasks + 1), curr_global_decoder.latent_size]).to(curr_global_decoder.device)
         # bin_z = torch.rand([n_img, curr_global_decoder.binary_latent_size]).to(curr_global_decoder.device)
-        ones_dist = torch.stack([curr_global_decoder.ones_distribution[task.item()] for task in task_ids])
+        ones_dist = torch.stack([curr_global_decoder.ones_distribution[int(task.item())] for task in task_ids])
         bin_z = torch.bernoulli(ones_dist).to(curr_global_decoder.device)
         bin_z = torch.round(bin_z) * 2 - 1
 
@@ -97,10 +97,10 @@ def generate_images(curr_global_decoder, z, bin_z, task_ids, y, return_emb=False
 
 
 def generate_noise_for_previous_data(n_img, n_task, latent_size, binary_latent_size, tasks_dist, ones_distribution,
-                                     device, same_z=False):
+                                     device, num_local=0, same_z=False):
     if same_z:
-        z_max = torch.randn([max(tasks_dist) * 2, latent_size]).to(device)
-        bin_rand = torch.rand([max(tasks_dist) * 2, binary_latent_size])
+        z_max = torch.randn([max(tasks_dist + torch.tensor([num_local])), latent_size]).to(device)
+        bin_rand = torch.rand([max(tasks_dist + torch.tensor([num_local])), binary_latent_size])
         bin_z_max = (bin_rand < ones_distribution[len(ones_distribution) - 1]).float().to(device)
         bin_z_max = bin_z_max * 2 - 1
         z = []
@@ -125,7 +125,8 @@ def generate_noise_for_previous_data(n_img, n_task, latent_size, binary_latent_s
         return z, bin_z
 
 
-def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, translate_noise=True, same_z=False,
+def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, num_local=0, translate_noise=True,
+                           same_z=False,
                            return_z=False):
     with torch.no_grad():
         curr_class_table = class_table[:n_tasks]
@@ -147,11 +148,11 @@ def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, tra
                 sampled_classes.append(class_samplers[task_id].sample(tasks_dist[task_id].view(-1, 1)))
         sampled_classes = torch.cat(sampled_classes)
         assert len(sampled_classes) == n_img
-
         z_combined = generate_noise_for_previous_data(n_img, n_tasks, curr_global_decoder.latent_size,
                                                       curr_global_decoder.binary_latent_size, tasks_dist,
                                                       curr_global_decoder.ones_distribution,
-                                                      device=curr_global_decoder.device, same_z=same_z)
+                                                      device=curr_global_decoder.device, num_local=num_local,
+                                                      same_z=same_z)
 
         if same_z:
             z, _, bin_z, _ = z_combined

@@ -3,7 +3,7 @@ import time
 import numpy as np
 import torch
 import torch.functional as F
-from torch import optim
+from torch import optim, nn
 
 from vae_experiments.vae_utils import generate_previous_data
 from vae_experiments.training_functions import loss_fn, bin_loss_fn
@@ -19,6 +19,10 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
     task_ids = task_id
     ones_distribution = torch.zeros([local_vae.binary_latent_size]).to(local_vae.device)
     total_examples = 0
+    if local_vae.in_size == 28:
+        marginal_loss = nn.BCELoss(reduction="sum")
+    else:
+        marginal_loss = nn.MSELoss(reduction="sum")
     for epoch in range(args.gen_ae_epochs):
         losses = []
         start = time.time()
@@ -46,7 +50,7 @@ def train_with_replay(args, local_vae, task_loader, task_id, class_table):
 
             recon_x, mean, log_var, z, binary_out = local_vae(x, task_ids, y, temp=gumbel_temp, translate_noise=True)
 
-            loss = loss_fn(recon_x, x, mean, log_var) + bin_loss_fn(binary_out)
+            loss = loss_fn(recon_x, x, mean, log_var, marginal_loss) + bin_loss_fn(binary_out)
 
             optimizer.zero_grad()
             loss.backward()

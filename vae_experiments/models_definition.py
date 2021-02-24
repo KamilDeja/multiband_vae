@@ -181,7 +181,7 @@ class Decoder(nn.Module):
         self.trainable_embeddings = trainable_embeddings
         self.in_size = in_size
         self.fc = fc
-        self.ones_distribution = OrderedDict()  # torch.zeros(binary_latent_size)
+        self.ones_distribution = None  # torch.zeros(binary_latent_size)
         # self.fc0 = nn.Linear(latent_size, latent_size)
 
         if in_size == 28:
@@ -297,6 +297,8 @@ class Translator(nn.Module):
         if binary_latent_size > 0:
             self.fc_bin_enc_1 = nn.Linear(binary_latent_size, binary_latent_size * 2)
             self.fc_bin_enc_2 = nn.Linear(binary_latent_size * 2, binary_latent_size * 3)
+            # self.fc_enc_joined = nn.Linear(binary_latent_size * 3 + n_dim_coding * 3,
+            #                                binary_latent_size * 3 + n_dim_coding * 3)
         self.fc1 = nn.Linear(n_dim_coding * 2 + latent_size + binary_latent_size * 3, latent_size * self.d // 2)
         # self.fc2 = nn.Linear(max(latent_size, 16), max(latent_size * n_dim_coding, 32))
         # self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
@@ -311,15 +313,13 @@ class Translator(nn.Module):
         if self.binary_latent_size > 0:
             bin_x = F.leaky_relu(self.fc_bin_enc_1(bin_x))
             bin_x = F.leaky_relu(self.fc_bin_enc_2(bin_x))
+        #     enc = torch.cat([bin_x, task_ids], dim=1)
+        #     enc = F.leaky_relu(self.fc_enc_joined(enc))
+        #     x = torch.cat([x, enc], dim=1)
+        # else:
         x = torch.cat([x, bin_x, task_ids], dim=1)
         x = F.leaky_relu(self.fc1(x))
-        # x = self.fc1(x)
-        # x = F.leaky_relu(self.fc2(x))
-        # matrix = self.fc3(x)
         out = self.fc4(x)
-        # task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)
-        # task_ids_enc_resized = matrix.view(-1, self.latent_size, self.latent_size)
-        # task_ids_enc_resized = torch.softmax(task_ids_enc_resized, 1)
         return out  # task_ids_enc_resized, bias
 
 

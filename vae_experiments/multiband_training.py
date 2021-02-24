@@ -12,7 +12,8 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
     else:
         tmp_table = training_functions.train_local_generator(local_vae, task_loader=train_dataset_loader,
                                                              task_id=task_id, n_classes=n_classes,
-                                                             n_epochs=args.gen_ae_epochs, local_start_lr=args.local_lr)
+                                                             n_epochs=args.gen_ae_epochs, local_start_lr=args.local_lr,
+                                                             scale_local_lr=args.scale_local_lr)
         class_table[task_id] = tmp_table
     print("Done training local VAE model")
 
@@ -41,9 +42,10 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
                                                                           n_iterations=len(train_dataset_loader),
                                                                           n_epochs=args.global_dec_epochs,
                                                                           batch_size=args.gen_batch_size,
-                                                                          train_same_z=True,
+                                                                          train_same_z=False,
                                                                           models_definition=models_definition,
-                                                                          cosine_sim=args.cosine_sim, global_lr=args.global_lr)
+                                                                          cosine_sim=args.cosine_sim, global_lr=args.global_lr,
+                                                                          limit_previous_examples=args.limit_previous, warmup_rounds=args.global_warmup)
     torch.cuda.empty_cache()
 
     return curr_global_decoder

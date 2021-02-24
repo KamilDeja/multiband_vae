@@ -79,7 +79,7 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
 
 
 def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_split=False, random_mini_shuffle=False,
-               limit_data=None):
+               limit_data=None, dirichlet_split_alpha=None):
     if dataset_name.lower() == "celeba":
         attr = dataset.attr
 
@@ -127,7 +127,7 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
             0: range(10)
         }
     else:
-        raise NotImplementedError()
+        batch_split = {i:[i] for i in range(num_batches)}
 
     if dataset_name.lower() == "celeba":
         class_indices = torch.zeros(len(dataset)) - 1
@@ -146,9 +146,24 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
     if num_batches == 1:
         class_indices = (
                                 class_indices - class_indices % 2) // 2  # To have the same classes as batch indices in normal setup
-
+    # dirichlet_split_alpha = 1
     batch_indices = (torch.zeros(len(dataset), num_batches))
-    if random_split:
+    if dirichlet_split_alpha != None:
+        p = torch.ones(num_batches) / num_batches
+        p = torch.distributions.Dirichlet(dirichlet_split_alpha * p).sample([num_classes])
+        class_split_list = []
+        n_samples_classes = []
+        for in_class in range(num_classes):
+            class_idx = torch.where(class_indices == in_class)[0]
+            class_split_list.append(class_idx[torch.randperm(len(class_idx))])
+            n_samples_classes.append(len(class_idx))
+        for batch in range(num_batches):
+            for in_class in range(num_classes):
+                split_point = int(n_samples_classes[in_class] * p[in_class, batch])
+                selected_class_idx = class_split_list[in_class][:split_point]
+                class_split_list[in_class] = class_split_list[in_class][split_point:]
+                batch_indices[selected_class_idx, batch] = 1
+    elif random_split:
         batch_indices[range(len(dataset)), torch.randint(low=0, high=num_batches, size=[len(dataset)])] = 1
     else:
         for task in batch_split:
@@ -188,11 +203,15 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
         train_dataset_splits[name] = AppendName(train_subset, name)
         val_dataset_splits[name] = AppendName(val_subset, name)
         task_output_space[name] = (batch_indices[:, name] == 1).sum()
+    if dirichlet_split_alpha != None:
+        print("Created dataset with class split:")
+        for i in range(num_batches):
+            classes, occurences = torch.unique(class_indices[train_dataset_splits[i].dataset.indices],
+                                               return_counts=True)
+            print([f"{in_class}: {n_occ}" for in_class,n_occ in zip(classes, occurences)])
 
-    print(
-        f"Prepared dataset with splits: {[(idx, len(data)) for idx, data in enumerate(train_dataset_splits.values())]}")
-    print(
-        f"Validation dataset with splits: {[(idx, len(data)) for idx, data in enumerate(val_dataset_splits.values())]}")
+    print(f"Prepared dataset with splits: {[(idx, len(data)) for idx, data in enumerate(train_dataset_splits.values())]}")
+    print(f"Validation dataset with splits: {[(idx, len(data)) for idx, data in enumerate(val_dataset_splits.values())]}")
 
     return train_dataset_splits, val_dataset_splits, task_output_space
 
