@@ -5,13 +5,14 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
-from geomloss import SamplesLoss
+# from geomloss import SamplesLoss
 
 from vae_experiments.lap_loss import LapLoss
 from vae_experiments.vae_utils import *
 import copy
 
-sinkhorn_loss = SamplesLoss("sinkhorn", blur=0.05, scaling=0.95, diameter=0.01, debias=True)
+# sinkhorn_loss = SamplesLoss("sinkhorn", blur=0.05, scaling=0.95, diameter=0.01, debias=True)
+torch.autograd.set_detect_anomaly(True)
 
 
 def loss_fn(y, x_target, mu, sigma, marginal_loss, lap_loss_fn=None):
@@ -25,7 +26,7 @@ def loss_fn(y, x_target, mu, sigma, marginal_loss, lap_loss_fn=None):
     else:
         loss = marginal_likelihood + KL_divergence
 
-    return loss
+    return loss, KL_divergence
 
 
 def bin_loss_fn(x):
@@ -64,7 +65,7 @@ def find_best_starting_point(local_vae, task_loader, task_id):
                                             temp=1,
                                             translate_noise=True, noise=noise)
             for task in range(task_id):
-                losses[task] += (loss(x, recon_x[task * batch_size:(task + 1) * batch_size]))
+                losses[task] += (loss(x, recon_x[task * batch_size:(task + 1) * batch_size])).item()
             if iteration > 10:
                 break
         print(f"Starting points_losses:{losses}")
@@ -74,7 +75,7 @@ def find_best_starting_point(local_vae, task_loader, task_id):
 def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=100, use_lap_loss=False,
                           local_start_lr=0.001, scale_local_lr=False):
     local_vae.train()
-    local_vae.translator.train()
+    local_vae.decoder.translator.train()
     translate_noise = True
     min_loss, starting_point = find_best_starting_point(local_vae, task_loader, task_id)
     starting_point = task_id
@@ -86,7 +87,7 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
         lr = local_start_lr
     print(f"lr set to: {lr}")
     scheduler_rate = 0.99
-    optimizer = torch.optim.Adam(list(local_vae.parameters()) + list(local_vae.translator.parameters()), lr=lr)
+    optimizer = torch.optim.Adam(list(local_vae.parameters()), lr=lr)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=scheduler_rate)
     table_tmp = torch.zeros(n_classes, dtype=torch.long)
     lap_loss = LapLoss(device=local_vae.device) if use_lap_loss else None
@@ -96,11 +97,12 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
         marginal_loss = nn.MSELoss(reduction="sum")
 
     if task_id > 0:
-        optimizer = torch.optim.Adam(list(local_vae.encoder.parameters()), lr=lr/10)
+        optimizer = torch.optim.Adam(list(local_vae.encoder.parameters()), lr=lr / 10)
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=scheduler_rate)
 
     for epoch in range(n_epochs):
         losses = []
+        kl_divs = []
         start = time.time()
         if (task_id != 0) and (epoch == min(20, max(n_epochs // 10, 5))):
             print("End of local_vae pretraining")
@@ -121,13 +123,14 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
             recon_x, mean, log_var, z, bin_x = local_vae(x, starting_point, y, temp=gumbel_temp,
                                                          translate_noise=translate_noise)
 
-            loss = loss_fn(recon_x, x, mean, log_var, marginal_loss, lap_loss)
+            loss, kl_div = loss_fn(recon_x, x, mean, log_var, marginal_loss, lap_loss)
             binary_loss = bin_loss_fn(bin_x)
             loss_final = loss + binary_loss
             optimizer.zero_grad()
             loss_final.backward()
             optimizer.step()
 
+            kl_divs.append(kl_div.item())
             losses.append(loss.item())
             if epoch == 0:
                 class_counter = torch.unique(y, return_counts=True)
@@ -139,7 +142,8 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
         #     print("lr:",scheduler.get_lr())
         #     print(iteration,len(task_loader))
         if epoch % 1 == 0:
-            print("Epoch: {}/{}, loss: {}, took: {} s".format(epoch, n_epochs, np.mean(losses), time.time() - start))
+            print("Epoch: {}/{}, loss: {}, kl_div: {}, took: {} s".format(epoch, n_epochs, np.mean(losses),
+                                                                          np.mean(kl_divs), time.time() - start))
     if local_vae.decoder.ones_distribution == None:
         local_vae.decoder.ones_distribution = (ones_distribution.cpu().detach() / total_examples).view(1, -1)
     else:
@@ -153,7 +157,8 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
 def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
                          models_definition, cosine_sim, n_epochs=100, n_iterations=30, batch_size=1000,
                          train_same_z=False,
-                         new_global_decoder=False, global_lr=0.0001, limit_previous_examples=1, warmup_rounds=20):
+                         new_global_decoder=False, global_lr=0.0001, limit_previous_examples=1, warmup_rounds=20,
+                         num_current_to_compare=1000):
     if new_global_decoder:
         global_decoder = models_definition.Decoder(latent_size=curr_global_decoder.latent_size, d=curr_global_decoder.d,
                                                    p_coding=curr_global_decoder.p_coding,
@@ -177,8 +182,8 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
     global_decoder.train()
     global_decoder.ones_distribution = local_vae.decoder.ones_distribution
     curr_global_decoder.ones_distribution = local_vae.decoder.ones_distribution
-    # optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)
-    optimizer = torch.optim.Adam(list(global_decoder.translator.parameters()), lr=global_lr)
+    optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)
+    # optimizer = torch.optim.Adam(list(global_decoder.translator.parameters()), lr=global_lr)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     criterion = nn.MSELoss(reduction='sum')
     # criterion = nn.BCELoss(reduction='sum')
@@ -194,11 +199,11 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
         losses = []
         start = time.time()
         sum_changed = torch.zeros([task_id + 1])
-        if epoch == warmup_rounds:
-            torch.save(curr_global_decoder,
-                       f"results/MNIST_140_test_for_analysis/model{task_id}_after_warmup_curr_decoder")
-            optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)  # , momentum=0.9)
-            scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+        # if epoch == warmup_rounds:
+        #     # torch.save(curr_global_decoder,
+        #     #            f"results/MNIST_140_test_for_analysis/model{task_id}_after_warmup_curr_decoder")
+        #     optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)  # , momentum=0.9)
+        #     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
         for iteration in range(n_iterations):
             # Building dataset from previous global model and local model
             recon_prev, classes_prev, z_prev, task_ids_prev, embeddings_prev = generate_previous_data(
@@ -237,13 +242,35 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
             # cos_sim = torch.nn.CosineSimilarity()
             if epoch > warmup_rounds:  # Warm-up epochs within which we don't switch targets
                 with torch.no_grad():
-                    prev_noise_translated = global_decoder.translator(z_prev, z_bin_prev, task_ids_prev)
+                    if num_current_to_compare > 0:
+                        z_current_compare = torch.randn([num_current_to_compare, global_decoder.latent_size]).to(
+                            global_decoder.device)
+                        bin_rand = torch.rand([num_current_to_compare, global_decoder.binary_latent_size])
+                        z_bin_current_compare = (bin_rand < global_decoder.ones_distribution[task_id]).float().to(
+                            global_decoder.device)
+                        z_bin_current_compare = z_bin_current_compare * 2 - 1
+                        task_ids_current_compare = torch.zeros(num_current_to_compare) + task_id
+                    else:
+                        z_current_compare = z_local
+                        z_bin_current_compare = z_bin_local
+                        task_ids_current_compare = task_ids_local
+
+                    current_noise_translated = global_decoder.translator(z_current_compare, z_bin_current_compare,
+                                                                         task_ids_current_compare)
                     # current_noise_translated = local_vae.decoder.translator(z_local, local_starting_point)#@TODO check this?
-                    current_noise_translated = global_decoder.translator(z_local, z_bin_local, task_ids_local)
+                    prev_noise_translated = global_decoder.translator(z_prev, z_bin_prev, task_ids_prev)
                     noise_simmilairty = 1 - cosine_distance(prev_noise_translated,
                                                             current_noise_translated)  # current_noise_translated.std() * cosine_sim  # .5  # * 2.5  # 3
                     selected_examples = torch.max(noise_simmilairty, 1)[0] > noise_diff_threshold
-                    recon_prev[selected_examples] = recon_local[torch.max(noise_simmilairty, 1)[1][selected_examples]]
+                    if selected_examples.sum()>0:
+                        selected_replacements = torch.max(noise_simmilairty, 1)[1][selected_examples]
+                        selected_z_current = z_current_compare[selected_replacements]
+                        selected_z_bin_current = z_bin_current_compare[selected_replacements]
+                        selected_task_ids = torch.zeros(selected_examples.sum()) + local_vae.starting_point
+                        selected_new_generations = local_vae.decoder(selected_z_current, selected_z_bin_current,
+                                                                     selected_task_ids, None)
+                        recon_prev[selected_examples] = selected_new_generations
+                    # recon_local[torch.max(noise_simmilairty, 1)[1][selected_examples]]
 
                     # for prev_task_id in range(task_id):
                     #     selected_task_ids = torch.where(task_ids_prev == prev_task_id)[0]

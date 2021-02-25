@@ -32,12 +32,12 @@ class VAE(nn.Module):
         self.encoder = Encoder(latent_size, binary_latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device,
                                in_size, fc)
         if standard_embeddings:
-            self.translator = Translator_embeddings(n_dim_coding, p_coding, latent_size, device)
+            translator = Translator_embeddings(n_dim_coding, p_coding, latent_size, device)
         else:
-            self.translator = Translator(n_dim_coding, p_coding, latent_size, binary_latent_size, device, d=d)
+            translator = Translator(n_dim_coding, p_coding, latent_size, binary_latent_size, device, d=d)
         self.decoder = Decoder(latent_size, binary_latent_size, d, p_coding, n_dim_coding, cond_p_coding,
                                cond_n_dim_coding, cond_dim,
-                               self.translator, device, standard_embeddings=standard_embeddings,
+                               translator, device, standard_embeddings=standard_embeddings,
                                trainable_embeddings=trainable_embeddings, in_size=in_size, fc=fc)
 
     def forward(self, x, task_id, conds, temp, translate_noise=True, noise=None):
@@ -76,6 +76,7 @@ class Encoder(nn.Module):
                  fc):
         super().__init__()
         assert cond_dim == 10  # change cond_n_dim_coding
+        assert cond_n_dim_coding ==0 #
         self.d = d
         self.cond_p_coding = cond_p_coding
         self.cond_n_dim_coding = cond_n_dim_coding
@@ -193,17 +194,17 @@ class Decoder(nn.Module):
 
         if fc:
             if self.standard_embeddings:
-                self.fc1 = nn.Linear(latent_size * self.d + cond_n_dim_coding + n_dim_coding, self.d * self.scaler)
+                self.fc1 = nn.Linear(latent_size + cond_n_dim_coding + n_dim_coding, self.d * self.scaler)
             else:
-                self.fc1 = nn.Linear(latent_size * self.d + cond_n_dim_coding, self.d * self.scaler * self.scaler)
+                self.fc1 = nn.Linear(latent_size + cond_n_dim_coding, self.d * self.scaler * self.scaler)
             self.fc_2 = nn.Linear(self.d * self.scaler * self.scaler, self.d * self.scaler * self.scaler * 2)
             self.fc_out = nn.Linear(self.d * self.scaler * self.scaler * 2, in_size * in_size * out_channels)
         else:
             if self.standard_embeddings:
-                self.fc1 = nn.Linear(latent_size * self.d + cond_n_dim_coding + n_dim_coding,
+                self.fc1 = nn.Linear(latent_size + cond_n_dim_coding + n_dim_coding,
                                      self.d * self.scaler * self.scaler * self.scaler)
             else:
-                self.fc1 = nn.Linear(latent_size * self.d + cond_n_dim_coding,
+                self.fc1 = nn.Linear(latent_size + cond_n_dim_coding,
                                      self.d * self.scaler * self.scaler * self.scaler)
             if in_size == 28:
                 self.scaler = 4
@@ -303,7 +304,7 @@ class Translator(nn.Module):
         # self.fc2 = nn.Linear(max(latent_size, 16), max(latent_size * n_dim_coding, 32))
         # self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
         # self.fc4 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size)
-        self.fc4 = nn.Linear(latent_size * self.d // 2, latent_size * self.d)
+        self.fc4 = nn.Linear(latent_size * self.d // 2, latent_size)# * self.d)
 
     def forward(self, x, bin_x, task_id):
         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)

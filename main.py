@@ -262,6 +262,8 @@ def get_args(argv):
                         help="How much of previous data we want to generate each epoch")
     parser.add_argument('--global_warmup', default=20, type=int,
                         help="Number of epochs for global warmup - only translator training")
+    parser.add_argument('--generations_for_switch', default=1000, type=int,
+                        help="Number of noise instances we want to create in order to select instances pos")
 
     args = parser.parse_args(argv)
 
