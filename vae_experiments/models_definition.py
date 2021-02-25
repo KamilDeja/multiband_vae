@@ -48,13 +48,14 @@ class VAE(nn.Module):
         else:
             hard = False
         means, log_var, binary_out = self.encoder(x, conds)
+        std = torch.exp(0.5 * log_var)
         binary_out_reverse = - binary_out
         if self.binary_latent_size > 0:
             binary_out_merged = torch.stack([binary_out, binary_out_reverse], -1)
             binary_out = F.gumbel_softmax(binary_out_merged, tau=temp, hard=hard, dim=2)[:, :, 0]
         binary_out = binary_out * 2 - 1
         # print(binary_out)
-        std = torch.exp(0.5 * log_var)
+
         if noise == None:
             eps = torch.randn([batch_size, self.latent_size]).to(self.device)
         else:
@@ -76,7 +77,7 @@ class Encoder(nn.Module):
                  fc):
         super().__init__()
         assert cond_dim == 10  # change cond_n_dim_coding
-        assert cond_n_dim_coding ==0 #
+        assert cond_n_dim_coding == 0  #
         self.d = d
         self.cond_p_coding = cond_p_coding
         self.cond_n_dim_coding = cond_n_dim_coding
@@ -304,7 +305,7 @@ class Translator(nn.Module):
         # self.fc2 = nn.Linear(max(latent_size, 16), max(latent_size * n_dim_coding, 32))
         # self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
         # self.fc4 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size)
-        self.fc4 = nn.Linear(latent_size * self.d // 2, latent_size)# * self.d)
+        self.fc4 = nn.Linear(latent_size * self.d // 2, latent_size)  # * self.d)
 
     def forward(self, x, bin_x, task_id):
         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
