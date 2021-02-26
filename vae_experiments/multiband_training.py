@@ -44,10 +44,12 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
                                                                           batch_size=args.gen_batch_size,
                                                                           train_same_z=True,
                                                                           models_definition=models_definition,
-                                                                          cosine_sim=args.cosine_sim, global_lr=args.global_lr,
+                                                                          cosine_sim=args.cosine_sim,
+                                                                          global_lr=args.global_lr,
                                                                           limit_previous_examples=args.limit_previous,
                                                                           warmup_rounds=args.global_warmup,
-                                                                          num_current_to_compare=args.generations_for_switch)
+                                                                          num_current_to_compare=args.generations_for_switch,
+                                                                          experiment_name=args.experiment_name)
     torch.cuda.empty_cache()
 
     return curr_global_decoder

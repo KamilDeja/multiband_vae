@@ -245,21 +245,11 @@ class Decoder(nn.Module):
                 conds_coded = BitUnpacker.unpackbits(conds_coded, self.cond_n_dim_coding).to(self.device)
 
         if self.standard_embeddings:
-            if return_emb:
-                task_ids_enc_resized = None
-                bias = None
             task_ids_enc = self.translator(task_id, self.trainable_embeddings)
             x = torch.cat([x, task_ids_enc], dim=1)
         elif translate_noise:
-            # task_id = torch.cat([x, task_id.to(self.device)], dim=1)
-            # task_ids_enc_resized, bias = self.translator(task_id)
-            # x = torch.bmm(task_ids_enc_resized, x.unsqueeze(-1)).squeeze(2) + bias
             x = self.translator(x, binary_x, task_id)
-            task_ids_enc_resized = None
-            bias = None
-        else:
-            task_ids_enc_resized = None
-            bias = None
+            translator_out = x
 
         if self.cond_n_dim_coding:
             x = torch.cat([x, conds_coded], dim=1)
@@ -280,7 +270,7 @@ class Decoder(nn.Module):
             x = F.leaky_relu(self.dc3_bn(x))
             x = torch.sigmoid(self.dc_out(x))
         if return_emb:
-            return x, (task_ids_enc_resized, bias)
+            return x, translator_out
         return x
 
 

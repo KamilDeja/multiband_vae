@@ -118,7 +118,6 @@ def generate_noise_for_previous_data(n_img, n_task, latent_size, binary_latent_s
         bin_z = []
         for task_id, n_img in enumerate(tasks_dist):
             bin_z_tmp = torch.bernoulli(ones_distribution[task_id].repeat([n_img, 1]))
-            bin_z_tmp = bin_z_tmp * 2 - 1
             bin_z.append(bin_z_tmp)
         bin_z = torch.cat(bin_z).to(device)
         bin_z = torch.round(bin_z) * 2 - 1
