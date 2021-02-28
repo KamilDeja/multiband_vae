@@ -40,7 +40,7 @@ class VAE(nn.Module):
                                translator, device, standard_embeddings=standard_embeddings,
                                trainable_embeddings=trainable_embeddings, in_size=in_size, fc=fc)
 
-    def forward(self, x, task_id, conds, temp, translate_noise=True, noise=None):
+    def forward(self, x, task_id, conds, temp, translate_noise=True, noise=None, encode_to_noise=False):
         batch_size = x.size(0)
         if temp == None:
             hard = True
@@ -66,6 +66,9 @@ class VAE(nn.Module):
                 task_id = torch.zeros([batch_size, 1]) + task_id
             else:
                 task_id = torch.zeros([batch_size, 1])
+        if encode_to_noise:
+            emb = self.decoder.translator(z, binary_out, task_id)
+            return emb
         recon_x = self.decoder(z, binary_out, task_id, conds, translate_noise=translate_noise)
 
         return recon_x, means, log_var, z, binary_out
@@ -292,7 +295,7 @@ class Translator(nn.Module):
             # self.fc_enc_joined = nn.Linear(binary_latent_size * 3 + n_dim_coding * 3,
             #                                binary_latent_size * 3 + n_dim_coding * 3)
         self.fc1 = nn.Linear(n_dim_coding * 2 + latent_size + binary_latent_size * 3, latent_size * self.d // 2)
-        # self.fc2 = nn.Linear(max(latent_size, 16), max(latent_size * n_dim_coding, 32))
+        # self.fc2 = nn.Linear(latent_size * self.d // 2, max(latent_size * n_dim_coding, 32))
         # self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
         # self.fc4 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size)
         self.fc4 = nn.Linear(latent_size * self.d // 2, latent_size)  # * self.d)

@@ -37,20 +37,22 @@ class Validator:
             self.score_model_func = lambda batch: model(batch)[0]
         self.stats_file_name = f"{stats_file_name}_dims_{self.dims}"
 
-    def compute_fid(self, curr_global_decoder, class_table, task_id, translate_noise=True, starting_point=None):
+    def compute_fid(self, curr_global_decoder, class_table, task_id, translate_noise=True, starting_point=None,
+                    sample_tasks=False):
         curr_global_decoder.eval()
         class_table = class_table[:task_id + 1]
         test_loader = self.dataloaders[task_id]
         with torch.no_grad():
             distribution_orig = []
             distribution_gen = []
-            task_samplers = []
-            # This is the other way round, we first select class from the class table, and then we randomly sample
-            # from tasks where this class was present
+            if sample_tasks:
+                task_samplers = []
+                # This is the other way round, we first select class from the class table, and then we randomly sample
+                # from tasks where this class was present
 
-            for class_id in range(self.n_classes):
-                local_probs = class_table[:, class_id] * 1.0 / torch.sum(class_table[:, class_id])
-                task_samplers.append(torch.distributions.categorical.Categorical(probs=local_probs))
+                for class_id in range(self.n_classes):
+                    local_probs = class_table[:, class_id] * 1.0 / torch.sum(class_table[:, class_id])
+                    task_samplers.append(torch.distributions.categorical.Categorical(probs=local_probs))
 
             precalculated_statistics = False
             stats_file_path = f"results/orig_stats/{self.dataset}_{self.stats_file_name}_{task_id}.npy"
@@ -68,18 +70,22 @@ class Validator:
                     self.device)
                 # bin_z = torch.rand([len(y), curr_global_decoder.binary_latent_size]).to(self.device)
                 bin_z = bin_z * 2 - 1
-                tasks_sampled = []
                 y = y.sort()[0]
                 labels, counts = torch.unique_consecutive(y, return_counts=True)
-                for i, n_occ in zip(labels, counts):
-                    if task_samplers[i].probs.sum() > 0:  # n_occ > 0:
-                        tasks_sampled.append(task_samplers[i].sample([n_occ]))
-                    else:
-                        tasks_sampled.append(task_samplers[class_table[task_id].argmax()].sample([n_occ]))
+                if sample_tasks:
+                    tasks_sampled = []
+                    for i, n_occ in zip(labels, counts):
+                        if task_samplers[i].probs.sum() > 0:  # n_occ > 0:
+                            tasks_sampled.append(task_samplers[i].sample([n_occ]))
+                        else:
+                            tasks_sampled.append(task_samplers[class_table[task_id].argmax()].sample([n_occ]))
 
-                task_ids = torch.cat(tasks_sampled)
-                if starting_point != None:
-                    task_ids = torch.zeros(len(task_ids)) + starting_point
+                    task_ids = torch.cat(tasks_sampled)
+                else:
+                    if starting_point != None:
+                        task_ids = torch.zeros(len(y)) + starting_point
+                    else:
+                        task_ids = torch.zeros(len(y)) + task_id
                 example = generate_images(curr_global_decoder, z, bin_z, task_ids, y, translate_noise=translate_noise)
                 if not precalculated_statistics:
                     distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
@@ -131,4 +137,6 @@ class Validator:
         precision, recall = prd_to_max_f_beta_pair(precision, recall)
         print(f"Precision:{precision},recall: {recall}")
 
-        return calculate_frechet_distance(distribution_gen[np.random.choice(len(distribution_gen), len(distribution_orig), False)], distribution_orig), precision, recall
+        return calculate_frechet_distance(
+            distribution_gen[np.random.choice(len(distribution_gen), len(distribution_orig), False)],
+            distribution_orig), precision, recall

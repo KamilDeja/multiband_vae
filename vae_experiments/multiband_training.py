@@ -3,7 +3,8 @@ from vae_experiments import training_functions
 import copy
 
 
-def train_multiband(args, models_definition, local_vae, curr_global_decoder, task_id, train_dataset_loader, class_table,
+def train_multiband(args, models_definition, local_vae, curr_global_decoder, task_id, train_dataset_loader,
+                    train_dataset_loader_big, class_table,
                     n_classes, device):
     # if task_id > 0:
     #     local_vae.decoder = copy.deepcopy(curr_global_decoder)
@@ -48,8 +49,11 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
                                                                           global_lr=args.global_lr,
                                                                           limit_previous_examples=args.limit_previous,
                                                                           warmup_rounds=args.global_warmup,
+                                                                          train_loader=train_dataset_loader,
+                                                                          train_dataset_loader_big=train_dataset_loader_big,
                                                                           num_current_to_compare=args.generations_for_switch,
-                                                                          experiment_name=args.experiment_name)
+                                                                          experiment_name=args.experiment_name,
+                                                                          visualise_latent=args.visualise_latent)
     torch.cuda.empty_cache()
 
     return curr_global_decoder

@@ -109,7 +109,8 @@ def train_local_generator(local_vae, task_loader, task_id, n_classes, n_epochs=1
         optimizer = torch.optim.Adam(list(local_vae.encoder.parameters()), lr=lr / 10)
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=scheduler_rate)
     else:
-        optimizer = torch.optim.Adam(list(local_vae.parameters()), lr=lr * 10, weight_decay=1e-5)
+        optimizer = torch.optim.Adam(list(local_vae.parameters()), lr=lr * 10, weight_decay=1e-6)
+        n_epochs = n_epochs * 2
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)  # scheduler_rate)
 
     for epoch in range(n_epochs):
@@ -172,7 +173,9 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
                          models_definition, cosine_sim, n_epochs=100, n_iterations=30, batch_size=1000,
                          train_same_z=False,
                          new_global_decoder=False, global_lr=0.0001, limit_previous_examples=1, warmup_rounds=20,
-                         num_current_to_compare=1000, experiment_name=None, visualise_latent=False):
+                         train_loader=None,
+                         train_dataset_loader_big=None, num_current_to_compare=1000, experiment_name=None,
+                         visualise_latent=False):
     if new_global_decoder:
         global_decoder = models_definition.Decoder(latent_size=curr_global_decoder.latent_size, d=curr_global_decoder.d,
                                                    p_coding=curr_global_decoder.p_coding,
@@ -197,8 +200,8 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
     global_decoder.ones_distribution = local_vae.decoder.ones_distribution
     curr_global_decoder.ones_distribution = local_vae.decoder.ones_distribution
 
-    optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)
-    # optimizer = torch.optim.Adam(list(global_decoder.translator.parameters()), lr=global_lr)
+    # optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)
+    optimizer = torch.optim.Adam(list(global_decoder.translator.parameters()), lr=global_lr)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
     criterion = nn.MSELoss(reduction='sum')
     # criterion = nn.BCELoss(reduction='sum')
@@ -210,12 +213,6 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
     tmp_decoder = curr_global_decoder
     noise_diff_threshold = cosine_sim
 
-    lenet = Model()
-    model_path = "vae_experiments/evaluation_models/lenet"  # + dataset
-    lenet.load_state_dict(torch.load(model_path))
-    lenet.to(global_decoder.device)
-    lenet.eval()
-
     if visualise_latent:
         visualizer = Visualizer(global_decoder, class_table, task_id=task_id, experiment_name=experiment_name)
     for epoch in range(n_epochs):
@@ -224,11 +221,21 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
         sum_changed = torch.zeros([task_id + 1])
         if visualise_latent:
             visualizer.visualize_latent(global_decoder, epoch, experiment_name)
-        # if epoch == warmup_rounds:
-        #     # torch.save(curr_global_decoder,
-        #     #            f"results/MNIST_140_test_for_analysis/model{task_id}_after_warmup_curr_decoder")
-        #     optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)  # , momentum=0.9)
-        #     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
+        if epoch >= warmup_rounds:
+            orig_images = next(iter(train_dataset_loader_big))
+            means, log_var, bin_z = local_vae.encoder(orig_images[0].to(local_vae.device),
+                                                      orig_images[1].to(local_vae.device))
+            std = torch.exp(0.5 * log_var)
+            binary_out = torch.distributions.Bernoulli(logits=bin_z).sample()
+            z_bin_current_compare = binary_out * 2 - 1
+            eps = torch.randn([len(orig_images[0]), local_vae.latent_size]).to(local_vae.device)
+            z_current_compare = eps * std + means
+            task_ids_current_compare = torch.zeros(len(orig_images[0])) + task_id
+        if epoch == warmup_rounds:
+            #     # torch.save(curr_global_decoder,
+            #     #            f"results/MNIST_140_test_for_analysis/model{task_id}_after_warmup_curr_decoder")
+            optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)  # , momentum=0.9)
+            scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
         for iteration in range(n_iterations):
             # Building dataset from previous global model and local model
             recon_prev, classes_prev, z_prev, task_ids_prev, embeddings_prev = generate_previous_data(
@@ -239,47 +246,30 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
                 num_local=batch_size,
                 return_z=True,
                 translate_noise=True,
-                same_z=train_same_z)
+                same_z=train_same_z,
+                equal_split=True)
 
             if train_same_z:
                 z_prev, z_max, z_bin_prev, z_bin_max = z_prev
-                z_local = z_max[:batch_size]
-                z_bin_local = z_bin_max[:batch_size]
+            else:
+                z_prev, z_bin_prev = z_prev
 
             with torch.no_grad():
-                sampled_classes_local = class_samplers[-1].sample([batch_size])
-                if not train_same_z:
-                    z_prev, z_bin_prev = z_prev
-                    z_local = torch.randn([batch_size, local_vae.latent_size]).to(curr_global_decoder.device)
-                    z_bin_local = torch.bernoulli(
-                        local_vae.decoder.ones_distribution[task_id].repeat([batch_size, 1])).to(
-                        curr_global_decoder.device)
-                    z_bin_local = z_bin_local * 2 - 1
-                    # z_bin_local = torch.rand_like(z_local).to(curr_global_decoder.device)
-                    # z_bin_local = torch.round(z_bin_local) * 2 - 1
-                recon_local = local_vae.decoder(z_local, z_bin_local, local_starting_point, sampled_classes_local,
-                                                translate_noise=True)
+                recon_local, sampled_classes_local, _ = next(iter(train_loader))
+                recon_local = recon_local.to(local_vae.device)
+                means, log_var, bin_z = local_vae.encoder(recon_local, sampled_classes_local)
+                std = torch.exp(0.5 * log_var)
+                binary_out = torch.distributions.Bernoulli(logits=bin_z).sample()
+                z_bin_local = binary_out * 2 - 1
+                eps = torch.randn([len(recon_local), local_vae.latent_size]).to(local_vae.device)
+                z_local = eps * std + means
 
             z_concat = torch.cat([z_prev, z_local])
             z_bin_concat = torch.cat([z_bin_prev, z_bin_local])
             task_ids_concat = torch.cat([task_ids_prev, task_ids_local])
             class_concat = torch.cat([classes_prev, sampled_classes_local])
-            # cos_sim = torch.nn.CosineSimilarity()
             if epoch > warmup_rounds:  # Warm-up epochs within which we don't switch targets
                 with torch.no_grad():
-                    if num_current_to_compare > 0:
-                        z_current_compare = torch.randn([num_current_to_compare, global_decoder.latent_size]).to(
-                            global_decoder.device)
-                        bin_rand = torch.rand([num_current_to_compare, global_decoder.binary_latent_size])
-                        z_bin_current_compare = (bin_rand < global_decoder.ones_distribution[task_id]).float().to(
-                            global_decoder.device)
-                        z_bin_current_compare = z_bin_current_compare * 2 - 1
-                        task_ids_current_compare = torch.zeros(num_current_to_compare) + task_id
-                    else:
-                        z_current_compare = z_local
-                        z_bin_current_compare = z_bin_local
-                        task_ids_current_compare = task_ids_local
-
                     current_noise_translated = global_decoder.translator(z_current_compare, z_bin_current_compare,
                                                                          task_ids_current_compare)
                     prev_noise_translated = global_decoder.translator(z_prev, z_bin_prev, task_ids_prev)
@@ -288,22 +278,8 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
                     selected_examples = torch.max(noise_simmilairty, 1)[0] > noise_diff_threshold
                     if selected_examples.sum() > 0:
                         selected_replacements = torch.max(noise_simmilairty, 1)[1][selected_examples]
-                        selected_z_current = z_current_compare[selected_replacements]
-                        selected_z_bin_current = z_bin_current_compare[selected_replacements]
-                        selected_task_ids = torch.zeros(selected_examples.sum()) + local_vae.starting_point
-                        selected_new_generations = local_vae.decoder(selected_z_current, selected_z_bin_current,
-                                                                     selected_task_ids, None)
-                        model_scores_prev = lenet(recon_prev[selected_examples])
-                        model_scores_current = lenet(selected_new_generations)
-                        entropy_prev = entropy(model_scores_prev)
-                        entropy_current = entropy(model_scores_current)
-                        selected_examples_prev = selected_examples
-                        selected_examples_prev[selected_examples_prev == True] = entropy_prev > entropy_current
-                        recon_prev[selected_examples_prev] = selected_new_generations[entropy_prev > entropy_current]
-                        # selected_examples_current = selected_examples
-                        # selected_examples_current[selected_examples_current == True] =entropy_prev < entropy_current
-                        # if num_current_to_compare == 0:
-                        #     recon_local[selected_examples_current] = recon_prev[selected_examples][entropy_prev < entropy_current]
+                        selected_new_generations = orig_images[0][selected_replacements].to(global_decoder.device)
+                        recon_prev[selected_examples] = selected_new_generations
 
                     switches = torch.unique(task_ids_prev[selected_examples], return_counts=True)
                     for prev_task_id, sum in zip(switches[0], switches[1]):

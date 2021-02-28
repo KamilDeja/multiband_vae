@@ -31,7 +31,7 @@ def run(args):
         n_classes = 10
     else:
         n_classes = train_dataset.number_classes
-    n_batches = n_classes // args.other_split_size
+    n_batches =args.num_batches# n_classes // args.other_split_size
     train_dataset_splits, val_dataset_splits, task_output_space = data_split(dataset=train_dataset,
                                                                              dataset_name=args.dataset.lower(),
                                                                              num_batches=n_batches,
@@ -93,12 +93,17 @@ def run(args):
     class_table = torch.zeros(n_tasks, n_classes, dtype=torch.long)
 
     train_loaders = []
+    train_loaders_big = []
     val_loaders = []
     for task_name in range(n_tasks):
         train_dataset_loader = data.DataLoader(dataset=train_dataset_splits[task_name],
                                                batch_size=args.gen_batch_size, shuffle=True,
                                                drop_last=False)
+        train_dataset_loader_big = data.DataLoader(dataset=train_dataset_splits[task_name],
+                                               batch_size=args.generations_for_switch, shuffle=True,
+                                               drop_last=False)
         train_loaders.append(train_dataset_loader)
+        train_loaders_big.append(train_dataset_loader_big)
         val_data = val_dataset_splits[
             task_name] if args.score_on_val else train_dataset_splits[task_name]
         val_loader = data.DataLoader(dataset=val_data, batch_size=args.val_batch_size, shuffle=False,
@@ -111,7 +116,7 @@ def run(args):
         labels_tasks_str = ""
     validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
                           stats_file_name=
-                          f"seed_{args.seed}_batches_{n_batches}_labels_{labels_tasks_str}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}_dirichlet_{args.dirichlet}_limit_{args.limit_data}",
+                          f"seed_{args.seed}_batches_{args.num_batches}_labels_{labels_tasks_str}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}_dirichlet_{args.dirichlet}_limit_{args.limit_data}",
                           score_model_device=device, dataloaders=val_loaders)
     curr_global_decoder = None
     for task_id in range(len(task_names)):
@@ -121,6 +126,7 @@ def run(args):
         # VAE
         print("Train local VAE model")
         train_dataset_loader = train_loaders[task_id]
+        train_dataset_loader_big = train_loaders_big[task_id]
 
         if args.training_procedure == "multiband":
             curr_global_decoder = multiband_training.train_multiband(args=args, models_definition=models_definition,
@@ -128,11 +134,13 @@ def run(args):
                                                                      curr_global_decoder=curr_global_decoder,
                                                                      task_id=task_id,
                                                                      train_dataset_loader=train_dataset_loader,
+                                                                     train_dataset_loader_big=train_dataset_loader_big,
                                                                      class_table=class_table, n_classes=n_classes,
                                                                      device=device)
         elif args.training_procedure == "replay":
             curr_global_decoder, tmp_table = replay_training.train_with_replay(args=args, local_vae=local_vae,
                                                                                task_loader=train_dataset_loader,
+                                                                               train_dataset_loader_big=train_dataset_loader_big,
                                                                                task_id=task_id, class_table=class_table)
             class_table[task_id] = tmp_table
         else:
@@ -206,8 +214,8 @@ def get_args(argv):
     parser.add_argument('--dataroot', type=str, default='data', help="The root folder of dataset or downloaded data")
     parser.add_argument('--dataset', type=str, default='MNIST', help="MNIST(default)|CelebA")
     parser.add_argument('--n_permutation', type=int, default=0, help="Enable permuted tests when >0")
-    parser.add_argument('--first_split_size', type=int, default=2)
-    parser.add_argument('--other_split_size', type=int, default=2)
+    # parser.add_argument('--first_split_size', type=int, default=2)
+    parser.add_argument('--num_batches', type=int, default=5)
     parser.add_argument('--rand_split', dest='rand_split', default=False, action='store_true',
                         help="Randomize the classes in splits")
     parser.add_argument('--rand_split_order', dest='rand_split_order', default=False, action='store_true',
@@ -264,6 +272,8 @@ def get_args(argv):
                         help="Number of epochs for global warmup - only translator training")
     parser.add_argument('--generations_for_switch', default=1000, type=int,
                         help="Number of noise instances we want to create in order to select instances pos")
+    parser.add_argument('--visualise_latent', default=False, action='store_true',
+                        help="Whether to visualise latent space")
 
     args = parser.parse_args(argv)
 
