@@ -20,7 +20,7 @@ class Validator:
         if dataset in ["MNIST", "FashionMNIST"]:
             from vae_experiments.evaluation_models.lenet import Model
             net = Model()
-            model_path = "vae_experiments/evaluation_models/lenet"  # + dataset
+            model_path = "vae_experiments/evaluation_models/lenet_" + dataset
             net.load_state_dict(torch.load(model_path))
             net.to(device)
             net.eval()
@@ -133,7 +133,8 @@ class Validator:
         print(f"Orig:{len(distribution_orig)}, Gen:{len(distribution_gen)}")
         precision, recall = compute_prd_from_embedding(
             eval_data=distribution_orig,
-            ref_data=distribution_gen[np.random.choice(len(distribution_gen), len(distribution_orig), False)])
+            ref_data=distribution_gen[np.random.choice(len(distribution_gen), len(distribution_orig), False)]
+        )
         precision, recall = prd_to_max_f_beta_pair(precision, recall)
         print(f"Precision:{precision},recall: {recall}")
 

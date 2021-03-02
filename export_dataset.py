@@ -24,10 +24,10 @@ def run(args):
         n_classes = 10
     else:
         n_classes = train_dataset.number_classes
-    n_batches = n_classes // args.other_split_size
+    n_batches = args.num_batches
     train_dataset_splits, val_dataset_splits, task_output_space = data_split(dataset=train_dataset,
                                                                              dataset_name=args.dataset.lower(),
-                                                                             num_batches=n_batches,
+                                                                             num_batches=args.num_batches,
                                                                              num_classes=n_classes,
                                                                              random_split=args.random_split,
                                                                              random_mini_shuffle=args.random_shuffle,
@@ -73,8 +73,7 @@ def get_args(argv):
     parser.add_argument('--dataset', type=str, default='MNIST', help="MNIST(default)|CelebA")
     parser.add_argument('--exported_name', type=str, help="name of the exported dataset")
     parser.add_argument('--n_permutation', type=int, default=0, help="Enable permuted tests when >0")
-    parser.add_argument('--first_split_size', type=int, default=2)
-    parser.add_argument('--other_split_size', type=int, default=2)
+    parser.add_argument('--num_batches', type=int, default=5)
     parser.add_argument('--rand_split', dest='rand_split', default=False, action='store_true',
                         help="Randomize the classes in splits")
     parser.add_argument('--rand_split_order', dest='rand_split_order', default=False, action='store_true',

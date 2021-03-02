@@ -41,7 +41,7 @@ def evaluate_directory(args, device):
         n_classes = 10
     else:
         n_classes = train_dataset.number_classes
-    n_batches = n_classes // args.other_split_size
+    n_batches = args.num_batches
     train_dataset_splits, val_dataset_splits, task_output_space = data_split(dataset=train_dataset,
                                                                              dataset_name=args.dataset.lower(),
                                                                              num_batches=n_batches,
@@ -105,7 +105,7 @@ def get_args(argv):
                         help="The list of gpuid, ex:--gpuid 3 1. Negative value means cpu-only")
     parser.add_argument('--seed', type=int, required=False, default=11,
                         help="Random seed. If defined all random operations will be reproducible")
-    parser.add_argument('--other_split_size', type=int, default=2)
+    parser.add_argument('--num_batches', type=int, default=5)
 
     parser.add_argument('--val_batch_size', type=int, default=250)
     parser.add_argument('--dataset', type=str, default='MNIST', help="MNIST(default)|CelebA")

@@ -79,31 +79,31 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
 
 
 def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_split=False, random_mini_shuffle=False,
-               limit_data=None, dirichlet_split_alpha=None):
+               limit_data=None, dirichlet_split_alpha=None, dirichlet_equal_split=True):
     if dataset_name.lower() == "celeba":
         attr = dataset.attr
-
-        if num_classes == 10:
-            class_split = {
-                0: [8, 20],  # Black hair
-                1: [8, -20],
-                6: [11, 20],  # Brown hair
-                7: [11, -20],
-                4: [35, 20],  # hat man
-                5: [35, -20],
-                2: [9, 20],  # Blond hair
-                3: [9, -20],
-                8: [17],  # gray
-                9: [4]  # bold
-            }
+        if not dirichlet_split_alpha:
+            if num_classes == 10:
+                class_split = {
+                    0: [8, 20],  # Black hair
+                    1: [8, -20],
+                    6: [11, 20],  # Brown hair
+                    7: [11, -20],
+                    4: [35, 20],  # hat man
+                    5: [35, -20],
+                    2: [9, 20],  # Blond hair
+                    3: [9, -20],
+                    8: [17],  # gray
+                    9: [4]  # bold
+                }
+            else:
+                raise NotImplementedError
         else:
-            raise NotImplementedError
-    else:
-        split_boundaries = [0, num_classes // num_batches]
-        while split_boundaries[-1] < num_classes:
-            split_boundaries.append(split_boundaries[-1] + num_classes // num_batches)
-        class_split = {i: list(range(split_boundaries[i], split_boundaries[i + 1])) for i in
-                       range(len(split_boundaries) - 1)}
+            split_boundaries = [0, num_classes // num_batches]
+            while split_boundaries[-1] < num_classes:
+                split_boundaries.append(split_boundaries[-1] + num_classes // num_batches)
+            class_split = {i: list(range(split_boundaries[i], split_boundaries[i + 1])) for i in
+                           range(len(split_boundaries) - 1)}
 
     if num_batches == 5:
         if random_mini_shuffle:
@@ -127,7 +127,7 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
             0: range(10)
         }
     else:
-        batch_split = {i:[i] for i in range(num_batches)}
+        batch_split = {i: [i] for i in range(num_batches)}
 
     if dataset_name.lower() == "celeba":
         class_indices = torch.zeros(len(dataset)) - 1
@@ -151,14 +151,17 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
     if dirichlet_split_alpha != None:
         p = torch.ones(num_batches) / num_batches
         p = torch.distributions.Dirichlet(dirichlet_split_alpha * p).sample([num_classes])
+        if dirichlet_equal_split:
+            p = p*num_classes/(p.sum(0)*(num_batches+2))
+
         class_split_list = []
         n_samples_classes = []
         for in_class in range(num_classes):
             class_idx = torch.where(class_indices == in_class)[0]
             class_split_list.append(class_idx[torch.randperm(len(class_idx))])
             n_samples_classes.append(len(class_idx))
-        for batch in range(num_batches):
-            for in_class in range(num_classes):
+        for in_class in range(num_classes):
+            for batch in range(num_batches):
                 split_point = int(n_samples_classes[in_class] * p[in_class, batch])
                 selected_class_idx = class_split_list[in_class][:split_point]
                 class_split_list[in_class] = class_split_list[in_class][split_point:]
@@ -208,10 +211,12 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
         for i in range(num_batches):
             classes, occurences = torch.unique(class_indices[train_dataset_splits[i].dataset.indices],
                                                return_counts=True)
-            print([f"{in_class}: {n_occ}" for in_class,n_occ in zip(classes, occurences)])
+            print([f"{in_class}: {n_occ}" for in_class, n_occ in zip(classes, occurences)])
 
-    print(f"Prepared dataset with splits: {[(idx, len(data)) for idx, data in enumerate(train_dataset_splits.values())]}")
-    print(f"Validation dataset with splits: {[(idx, len(data)) for idx, data in enumerate(val_dataset_splits.values())]}")
+    print(
+        f"Prepared dataset with splits: {[(idx, len(data)) for idx, data in enumerate(train_dataset_splits.values())]}")
+    print(
+        f"Validation dataset with splits: {[(idx, len(data)) for idx, data in enumerate(val_dataset_splits.values())]}")
 
     return train_dataset_splits, val_dataset_splits, task_output_space
 

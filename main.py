@@ -238,9 +238,12 @@ def get_args(argv):
     # Generative network - multiband vae
     parser.add_argument('--gen_batch_size', type=int, default=50)
     parser.add_argument('--local_lr', type=float, default=0.001)
+    parser.add_argument('--local_scheduler_rate', type=float, default=0.99)
     parser.add_argument('--scale_local_lr', default=False, action='store_true',
                         help="Scale lr of local model based on the reconstruction error")
+    parser.add_argument('--scale_reconstruction_loss', type=float, default=1)
     parser.add_argument('--global_lr', type=float, default=0.0001)
+    parser.add_argument('--global_scheduler_rate', type=float, default=0.99)
     parser.add_argument('--gen_n_dim_coding', type=int, default=4,
                         help="Number of bits used to code task id in binary autoencoder")
     parser.add_argument('--gen_p_coding', type=int, default=9,

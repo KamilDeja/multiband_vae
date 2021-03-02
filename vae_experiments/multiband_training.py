@@ -11,10 +11,17 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
     if args.gen_load_pretrained_models:
         local_vae.load_state_dict(torch.load(args.gen_pretrained_models_dir + f'model{task_id}_local_vae'))
     else:
-        tmp_table = training_functions.train_local_generator(local_vae, task_loader=train_dataset_loader,
+        if task_id == 0:
+            n_epochs = args.gen_ae_epochs + args.global_dec_epochs
+        else:
+            n_epochs = args.gen_ae_epochs
+        tmp_table = training_functions.train_local_generator(local_vae, dataset=args.dataset,
+                                                             task_loader=train_dataset_loader,
                                                              task_id=task_id, n_classes=n_classes,
-                                                             n_epochs=args.gen_ae_epochs, local_start_lr=args.local_lr,
-                                                             scale_local_lr=args.scale_local_lr)
+                                                             n_epochs=n_epochs, local_start_lr=args.local_lr,
+                                                             scheduler_rate=args.local_scheduler_rate,
+                                                             scale_local_lr=args.scale_local_lr,
+                                                             scale_marginal_loss=args.scale_reconstruction_loss)
         class_table[task_id] = tmp_table
     print("Done training local VAE model")
 
@@ -45,8 +52,10 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
                                                                           batch_size=args.gen_batch_size,
                                                                           train_same_z=True,
                                                                           models_definition=models_definition,
+                                                                          dataset=args.dataset,
                                                                           cosine_sim=args.cosine_sim,
                                                                           global_lr=args.global_lr,
+                                                                          scheduler_rate=args.global_scheduler_rate,
                                                                           limit_previous_examples=args.limit_previous,
                                                                           warmup_rounds=args.global_warmup,
                                                                           train_loader=train_dataset_loader,
