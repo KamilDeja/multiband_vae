@@ -114,10 +114,11 @@ def run(args):
         labels_tasks_str = "_".join(["_".join(str(label) for label in labels_tasks[task]) for task in labels_tasks])
     else:
         labels_tasks_str = ""
-    validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
-                          stats_file_name=
-                          f"seed_{args.seed}_batches_{args.num_batches}_labels_{labels_tasks_str}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}_dirichlet_{args.dirichlet}_limit_{args.limit_data}",
-                          score_model_device=device, dataloaders=val_loaders)
+    if not args.skip_validation:
+        validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
+                              stats_file_name=
+                              f"seed_{args.seed}_batches_{args.num_batches}_labels_{labels_tasks_str}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}_dirichlet_{args.dirichlet}_limit_{args.limit_data}",
+                              score_model_device=device, dataloaders=val_loaders)
     curr_global_decoder = None
     for task_id in range(len(task_names)):
         print("######### Task number {} #########".format(task_id))

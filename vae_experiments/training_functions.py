@@ -210,7 +210,6 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
         criterion = nn.MSELoss(reduction="sum")
     class_samplers = prepare_class_samplres(task_id + 1, class_table)
     local_starting_point = torch.zeros([batch_size]) + local_vae.starting_point
-    task_ids_local = torch.zeros([batch_size]) + task_id
     n_prev_examples = int(batch_size * min(task_id, 3) * limit_previous_examples)
 
     tmp_decoder = curr_global_decoder
@@ -259,6 +258,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
 
             with torch.no_grad():
                 recon_local, sampled_classes_local, _ = next(iter(train_loader))
+                task_ids_local = torch.zeros([len(recon_local)]) + task_id
                 recon_local = recon_local.to(local_vae.device)
                 means, log_var, bin_z = local_vae.encoder(recon_local, sampled_classes_local)
                 std = torch.exp(0.5 * log_var)

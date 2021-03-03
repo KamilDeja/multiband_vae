@@ -5,7 +5,7 @@ from torchvision import transforms
 from .wrapper import CacheClassLabel
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader, Subset, TensorDataset
+from torch.utils.data import Dataset, DataLoader, Subset, TensorDataset, ConcatDataset
 
 
 class FastCelebA(Dataset):
@@ -84,13 +84,50 @@ def MNIST(dataroot, skip_normalization=False, train_aug=False):
     return train_dataset, val_dataset
 
 
+def Omniglot(dataroot, skip_normalization=False, train_aug=False):
+    # normalize = transforms.Normalize(mean=(0.1307,), std=(0.3081,))  # for 28x28
+    # normalize = transforms.Normalize(mean=(0.1000,), std=(0.2752,))  # for 32x32
+
+    if skip_normalization:
+        val_transform = transforms.Compose([
+            transforms.Resize(28),
+            transforms.ToTensor(),
+            transforms.Normalize(1, -1)
+        ])
+    else:
+        val_transform = transforms.Compose([
+            transforms.Resize(28),
+            transforms.ToTensor(),
+            transforms.Normalize(1, -1)
+        ])
+
+    train_transform = val_transform
+
+    train_dataset = torchvision.datasets.Omniglot(
+        root=dataroot,
+        download=True,
+        transform=train_transform
+    )
+    train_dataset = CacheClassLabel(train_dataset)
+
+    # val_dataset = torchvision.datasets.MNIST(
+    #     dataroot,
+    #     train=False,
+    #     transform=val_transform
+    # )
+    # val_dataset = CacheClassLabel(val_dataset)
+    print("Using train dataset for validation in OMNIGLOT")
+    return train_dataset, train_dataset
+
+
 def FashionMNIST(dataroot, skip_normalization=False, train_aug=False):
-    normalize = transforms.Normalize(mean=(0.1307,), std=(0.3081,))  # for 28x28
+    normalize = transforms.Normalize(mean=(0.5,), std=(0.5,))  # for  28x28
     # normalize = transforms.Normalize(mean=(0.1000,), std=(0.2752,))  # for 32x32
 
     if skip_normalization:
         val_transform = transforms.Compose([
             transforms.ToTensor(),
+            # normalize
         ])
     else:
         val_transform = transforms.Compose([
@@ -121,6 +158,68 @@ def FashionMNIST(dataroot, skip_normalization=False, train_aug=False):
     )
     val_dataset = CacheClassLabel(val_dataset)
 
+    return train_dataset, val_dataset
+
+
+def DoubleMNIST(dataroot, skip_normalization=False, train_aug=False):
+    normalize = transforms.Normalize(mean=(0.1307,), std=(0.3081,))  # for  28x28
+    # normalize = transforms.Normalize(mean=(0.1000,), std=(0.2752,))  # for 32x32
+
+    if skip_normalization:
+        val_transform = transforms.Compose([
+            transforms.ToTensor(),
+        ])
+    else:
+        val_transform = transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ])
+
+    train_transform = val_transform
+    if train_aug:
+        train_transform = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.ToTensor(),
+            normalize,
+        ])
+
+    train_dataset_fashion = torchvision.datasets.FashionMNIST(
+        root=dataroot,
+        train=True,
+        download=True,
+        transform=train_transform
+    )
+    # train_dataset_fashion = CacheClassLabel(train_dataset_fashion)
+
+    train_dataset_mnist = torchvision.datasets.MNIST(
+        root=dataroot,
+        train=True,
+        download=True,
+        transform=train_transform
+    )
+    # train_dataset_mnist = CacheClassLabel(train_dataset_mnist)
+
+    val_dataset_fashion = torchvision.datasets.FashionMNIST(
+        dataroot,
+        train=False,
+        transform=val_transform
+    )
+    # val_dataset_fashion = CacheClassLabel(val_dataset)
+
+    val_dataset_mnist = torchvision.datasets.MNIST(
+        dataroot,
+        train=False,
+        transform=val_transform
+    )
+    # val_dataset_mnist = CacheClassLabel(val_dataset)
+    train_dataset_mnist.targets = train_dataset_mnist.targets + 10
+    val_dataset_mnist.targets = val_dataset_mnist.targets + 10
+    train_dataset = ConcatDataset([train_dataset_fashion, train_dataset_mnist])
+    train_dataset.root = train_dataset_mnist.root
+    val_dataset = ConcatDataset([val_dataset_fashion, val_dataset_mnist])
+    val_dataset.root = val_dataset_mnist.root
+    val_dataset = CacheClassLabel(val_dataset)
+    train_dataset = CacheClassLabel(train_dataset)
     return train_dataset, val_dataset
 
 

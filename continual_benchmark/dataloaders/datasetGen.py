@@ -115,19 +115,27 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
                 4: [6, 7]
             }
         else:
-            batch_split = {
-                0: [0, 1],
-                1: [2, 3],
-                2: [4, 5],
-                3: [6, 7],
-                4: [8, 9]
-            }
+            if dataset_name in ["omniglot", "doublemnist"]:
+                one_split = num_classes // num_batches
+                batch_split = {i: [list(range(i * one_split, (i + 1) * one_split))] for i in range(num_batches)}
+            else:
+                batch_split = {
+                    0: [0, 1],
+                    1: [2, 3],
+                    2: [4, 5],
+                    3: [6, 7],
+                    4: [8, 9]
+                }
     elif num_batches == 1:
         batch_split = {
             0: range(10)
         }
     else:
-        batch_split = {i: [i] for i in range(num_batches)}
+        if dataset_name in ["omniglot", "doublemnist"]:
+            one_split = num_classes // num_batches
+            batch_split = {i: [list(range(i * one_split, (i + 1) * one_split))] for i in range(num_batches)}
+        else:
+            batch_split = {i: [i] for i in range(num_batches)}
 
     if dataset_name.lower() == "celeba":
         class_indices = torch.zeros(len(dataset)) - 1
@@ -152,7 +160,7 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
         p = torch.ones(num_batches) / num_batches
         p = torch.distributions.Dirichlet(dirichlet_split_alpha * p).sample([num_classes])
         if dirichlet_equal_split:
-            p = p*num_classes/(p.sum(0)*(num_batches+2))
+            p = p * num_classes / (p.sum(0) * (num_batches + 2))
 
         class_split_list = []
         n_samples_classes = []

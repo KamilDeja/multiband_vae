@@ -79,8 +79,8 @@ class Encoder(nn.Module):
     def __init__(self, latent_size, binary_latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device, in_size,
                  fc):
         super().__init__()
-        assert cond_dim == 10  # change cond_n_dim_coding
-        assert cond_n_dim_coding == 0  #
+        # assert cond_dim == 10  # change cond_n_dim_coding
+        assert cond_n_dim_coding == 0  # Doesn't work right now
         self.d = d
         self.cond_p_coding = cond_p_coding
         self.cond_n_dim_coding = cond_n_dim_coding

@@ -17,14 +17,19 @@ class Validator:
         self.dataloaders = dataloaders
 
         print("Preparing validator")
-        if dataset in ["MNIST", "FashionMNIST"]:
-            from vae_experiments.evaluation_models.lenet import Model
+        if dataset in ["MNIST", "FashionMNIST", "Omniglot", "DoubleMNIST"]:
+            if dataset in ["Omniglot"]:
+                from vae_experiments.evaluation_models.lenet_Omniglot import Model
+            elif dataset == "DoubleMNIST":
+                from vae_experiments.evaluation_models.lenet_DoubleMNIST import Model
+            else:
+                from vae_experiments.evaluation_models.lenet import Model
             net = Model()
             model_path = "vae_experiments/evaluation_models/lenet_" + dataset
             net.load_state_dict(torch.load(model_path))
             net.to(device)
             net.eval()
-            self.dims = 84  # 128
+            self.dims = 128 if dataset in ["Omniglot", "DoubleMNIST"] else 84  # 128
             self.score_model_func = net.part_forward
         elif dataset.lower() == "celeba":
             from vae_experiments.evaluation_models.inception import InceptionV3
@@ -120,7 +125,7 @@ class Validator:
                 x = batch[0].to(self.device)
                 distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
 
-        if args.dataset.lower() == "mnist":
+        if args.dataset.lower() in ["mnist", "fashionmnist", "omniglot", "doublemnist"]:
             generations = generations.reshape(-1, 1, 28, 28)
         elif args.dataset.lower() == "celeba":
             generations = generations.reshape(-1, 3, 64, 64)
