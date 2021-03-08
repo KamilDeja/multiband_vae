@@ -31,7 +31,7 @@ def run(args):
         n_classes = 10
     else:
         n_classes = train_dataset.number_classes
-    n_batches =args.num_batches# n_classes // args.other_split_size
+    n_batches = args.num_batches  # n_classes // args.other_split_size
     train_dataset_splits, val_dataset_splits, task_output_space = data_split(dataset=train_dataset,
                                                                              dataset_name=args.dataset.lower(),
                                                                              num_batches=n_batches,
@@ -100,8 +100,8 @@ def run(args):
                                                batch_size=args.gen_batch_size, shuffle=True,
                                                drop_last=False)
         train_dataset_loader_big = data.DataLoader(dataset=train_dataset_splits[task_name],
-                                               batch_size=args.generations_for_switch, shuffle=True,
-                                               drop_last=False)
+                                                   batch_size=args.generations_for_switch, shuffle=True,
+                                                   drop_last=False)
         train_loaders.append(train_dataset_loader)
         train_loaders_big.append(train_dataset_loader_big)
         val_data = val_dataset_splits[
@@ -112,6 +112,7 @@ def run(args):
 
     if args.dirichlet != None:
         labels_tasks_str = "_".join(["_".join(str(label) for label in labels_tasks[task]) for task in labels_tasks])
+        labels_tasks_str = labels_tasks_str[:min(20, len(labels_tasks_str))]
     else:
         labels_tasks_str = ""
     if not args.skip_validation:
@@ -171,11 +172,12 @@ def run(args):
             for j in range(task_id + 1):
                 fid_table[j][task_name] = -1
         else:
-            if args.training_procedure == "multiband":
-                fid_result, _, _ = validator.compute_fid(curr_global_decoder=local_vae.decoder,
+            if (args.training_procedure == "multiband") and (not args.gen_load_pretrained_models):
+                fid_result, precision, recall = validator.compute_fid(curr_global_decoder=local_vae.decoder,
                                                          class_table=class_table,
                                                          task_id=task_id, translate_noise=translate_noise,
-                                                         starting_point=local_vae.starting_point)
+                                                         starting_point=local_vae.starting_point,
+                                                         dataset=args.dataset)
                 fid_local_vae[task_id] = fid_result
                 print(f"FID local VAE: {fid_result}")
             for j in range(task_id + 1):
@@ -184,7 +186,8 @@ def run(args):
                 fid_result, precision, recall = validator.compute_fid(curr_global_decoder=curr_global_decoder,
                                                                       class_table=class_table,
                                                                       task_id=j,
-                                                                      translate_noise=translate_noise)  # task_id != 0)
+                                                                      translate_noise=translate_noise,
+                                                                      dataset=args.dataset)  # task_id != 0)
                 fid_table[j][task_name] = fid_result
                 precision_table[j][task_name] = precision
                 recall_table[j][task_name] = recall
@@ -259,7 +262,8 @@ def get_args(argv):
     parser.add_argument('--gen_ae_epochs', type=int, default=20,
                         help="Number of epochs to train local variational autoencoder")
     parser.add_argument('--global_dec_epochs', type=int, default=20, help="Number of epochs to train global decoder")
-    parser.add_argument('--gen_load_pretrained_models', default=False, help="Load pretrained generative models")
+    parser.add_argument('--gen_load_pretrained_models', default=False, action='store_true',
+                        help="Load pretrained generative models")
     parser.add_argument('--gen_pretrained_models_dir', type=str, default="results/pretrained_models",
                         help="Directory of pretrained generative models")
     parser.add_argument('--standard_embeddings', dest='standard_embeddings', default=False, action='store_true',

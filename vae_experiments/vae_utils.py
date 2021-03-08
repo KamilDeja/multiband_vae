@@ -8,9 +8,9 @@ class BitUnpacker:
     results_map = {}
 
     @classmethod
-    def unpackbits(cls, x, num_bits):
+    def unpackbits(cls, y, num_bits):
         with torch.no_grad():
-            x += 1
+            x = y + 1
             if num_bits == 0:
                 return torch.Tensor([])
 

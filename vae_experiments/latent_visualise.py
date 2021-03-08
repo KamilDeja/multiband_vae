@@ -63,7 +63,7 @@ class Visualizer:
             x, y = location[0], location[1]
             batch = int(location["batch"])
             ab = AnnotationBbox(OffsetImage(example), (x, y), frameon=True,
-                                bboxprops=dict(edgecolor=sns.color_palette("hls", self.task_id)[batch], width=10))
+                                bboxprops=dict(facecolor=sns.color_palette("hls", self.task_id)[batch], width=10))
             ax.add_artist(ab)
 
         plt.title(f"Latent visualisation epoch {epoch_n}", fontsize=34)

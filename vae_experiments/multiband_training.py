@@ -9,7 +9,7 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
     # if task_id > 0:
     #     local_vae.decoder = copy.deepcopy(curr_global_decoder)
     if args.gen_load_pretrained_models:
-        local_vae.load_state_dict(torch.load(args.gen_pretrained_models_dir + f'model{task_id}_local_vae'))
+        local_vae=torch.load(args.gen_pretrained_models_dir + f'model{task_id}_local_vae').to(device)
     else:
         if task_id == 0:
             n_epochs = args.gen_ae_epochs + args.global_dec_epochs
@@ -32,17 +32,7 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
         print("Train global VAE model")
         # Retraining global decoder with previous global decoder and local_vae
         if args.gen_load_pretrained_models:
-            curr_global_decoder = models_definition.Decoder(latent_size=local_vae.latent_size, d=args.gen_d,
-                                                            p_coding=local_vae.p_coding,
-                                                            n_dim_coding=local_vae.n_dim_coding,
-                                                            cond_p_coding=local_vae.cond_p_coding,
-                                                            cond_n_dim_coding=local_vae.cond_n_dim_coding,
-                                                            cond_dim=n_classes, device=local_vae.device,
-                                                            standard_embeddings=local_vae.decoder.standard_embeddings,
-                                                            trainable_embeddings=local_vae.decoder.trainable_embeddings).to(
-                device)
-            curr_global_decoder.load_state_dict(
-                torch.load(args.gen_pretrained_models_dir + f'model{task_id}_curr_decoder'))
+            curr_global_decoder = torch.load(args.gen_pretrained_models_dir + f'model{task_id}_curr_decoder').to(device)
         else:
             curr_global_decoder = training_functions.train_global_decoder(curr_global_decoder=curr_global_decoder,
                                                                           local_vae=local_vae,

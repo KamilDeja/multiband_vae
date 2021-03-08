@@ -17,11 +17,11 @@ class Validator:
         self.dataloaders = dataloaders
 
         print("Preparing validator")
-        if dataset in ["MNIST", "FashionMNIST", "Omniglot", "DoubleMNIST"]:
+        if dataset in ["MNIST", "Omniglot"]:  # , "DoubleMNIST"]:
             if dataset in ["Omniglot"]:
                 from vae_experiments.evaluation_models.lenet_Omniglot import Model
-            elif dataset == "DoubleMNIST":
-                from vae_experiments.evaluation_models.lenet_DoubleMNIST import Model
+            # elif dataset == "DoubleMNIST":
+            #     from vae_experiments.evaluation_models.lenet_DoubleMNIST import Model
             else:
                 from vae_experiments.evaluation_models.lenet import Model
             net = Model()
@@ -31,7 +31,7 @@ class Validator:
             net.eval()
             self.dims = 128 if dataset in ["Omniglot", "DoubleMNIST"] else 84  # 128
             self.score_model_func = net.part_forward
-        elif dataset.lower() == "celeba":
+        elif dataset.lower() in ["celeba", "doublemnist", "fashionmnist"]:
             from vae_experiments.evaluation_models.inception import InceptionV3
             self.dims = 2048
             block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[self.dims]
@@ -43,7 +43,7 @@ class Validator:
         self.stats_file_name = f"{stats_file_name}_dims_{self.dims}"
 
     def compute_fid(self, curr_global_decoder, class_table, task_id, translate_noise=True, starting_point=None,
-                    sample_tasks=False):
+                    sample_tasks=False, dataset=None):
         curr_global_decoder.eval()
         class_table = class_table[:task_id + 1]
         test_loader = self.dataloaders[task_id]
@@ -93,7 +93,11 @@ class Validator:
                         task_ids = torch.zeros(len(y)) + task_id
                 example = generate_images(curr_global_decoder, z, bin_z, task_ids, y, translate_noise=translate_noise)
                 if not precalculated_statistics:
+                    if dataset.lower() in ["fashionmnist", "doublemnist"]:
+                        x = x.repeat([1, 3, 1, 1])
                     distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
+                if dataset.lower() in ["fashionmnist", "doublemnist"]:
+                    example = example.repeat([1, 3, 1, 1])
                 distribution_gen.append(self.score_model_func(example))
 
             distribution_gen = torch.cat(distribution_gen).cpu().detach().numpy().reshape(-1, self.dims)
@@ -123,6 +127,8 @@ class Validator:
         if not precalculated_statistics:
             for idx, batch in enumerate(test_loader):
                 x = batch[0].to(self.device)
+                if args.dataset.lower() in ["fashionmnist", "doublemnist"]:
+                    x = x.repeat([1, 3, 1, 1])
                 distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
 
         if args.dataset.lower() in ["mnist", "fashionmnist", "omniglot", "doublemnist"]:
@@ -130,11 +136,23 @@ class Validator:
         elif args.dataset.lower() == "celeba":
             generations = generations.reshape(-1, 3, 64, 64)
         generations = torch.from_numpy(generations).to(self.device)
-        distribution_gen = self.score_model_func(generations).cpu().detach().numpy().reshape(-1, self.dims)
+        if args.dataset.lower() in ["fashionmnist", "doublemnist"]:
+            generations = generations.repeat([1, 3, 1, 1])
 
         if not precalculated_statistics:
             distribution_orig = np.array(np.concatenate(distribution_orig)).reshape(-1, self.dims)
             np.save(stats_file_path, distribution_orig)
+
+        distribution_gen = []
+        batch_size = args.val_batch_size
+        max_len = min(len(generations), len(distribution_orig))
+        for idx in range(0, max_len, batch_size):
+            start_point = idx
+            end_point = min(max_len, idx + batch_size)
+            distribution_gen.append(
+                self.score_model_func(generations[start_point:end_point]).cpu().detach().numpy().reshape(-1, self.dims))
+        distribution_gen = np.concatenate(distribution_gen)
+
         print(f"Orig:{len(distribution_orig)}, Gen:{len(distribution_gen)}")
         precision, recall = compute_prd_from_embedding(
             eval_data=distribution_orig,

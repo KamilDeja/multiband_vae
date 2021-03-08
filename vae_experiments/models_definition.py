@@ -312,6 +312,10 @@ class Translator(nn.Module):
         #     enc = F.leaky_relu(self.fc_enc_joined(enc))
         #     x = torch.cat([x, enc], dim=1)
         # else:
+        # xi = x[:, :4]
+        # xi = F.leaky_relu(self.fc_new_bin_1(xi))
+        # xi = self.fc_new_bin_2(xi)
+        # xi = torch.sign(xi) * torch.abs(xi).pow(1 / 3) * torch.exp(-0.5 * xi.pow(2))
         x = torch.cat([x, bin_x, task_ids], dim=1)
         x = F.leaky_relu(self.fc1(x))
         out = self.fc4(x)

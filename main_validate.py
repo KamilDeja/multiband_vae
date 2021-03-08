@@ -76,8 +76,11 @@ def evaluate_directory(args, device):
             val_name = j
             # print('validation split name:', val_name)
             examples = np.load(f"{args.directory}/generations_{task_id + 1}_{j + 1}.npy")
-            if args.dataset.lower() in ["mnist", "fashionmnist", "omniglot"]:
+            if args.dataset.lower() in ["mnist", "fashionmnist", "omniglot", "doublemnist"]:
                 examples = examples.reshape([-1, 1, 28, 28])
+                # print(examples.size())
+                # if args.dataset.lower() in ["fashionmnist", "doublemnist"]:
+                #     examples = examples.repeat([1, 3, 1, 1])
             print(examples.shape)
             to_plot.append(examples[:5])
             fid_result, precision, recall = validator.compute_fid_from_examples(args, examples, j)  # task_id != 0)
@@ -85,7 +88,7 @@ def evaluate_directory(args, device):
             precision_table[j][task_id] = precision
             recall_table[j][task_id] = recall
             print(f"FID task {j}: {fid_result}")
-        if args.dataset.lower() in ["mnist", "fashionmnist", "omniglot"]:
+        if args.dataset.lower() in ["mnist", "fashionmnist", "omniglot", "doublemnist"]:
             to_plot = np.concatenate(to_plot).reshape([-1, 1, 28, 28])
         elif args.dataset.lower() == "celeba":
             to_plot = np.concatenate(to_plot).reshape(-1, 3, 64, 64)

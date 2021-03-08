@@ -6,8 +6,6 @@ from matplotlib.gridspec import GridSpec
 import os
 
 
-# names = ['bingan_kwta', 'kwta', 'naive']
-
 def dict2array(results):
     runs = len(results)
     tasks = len(results[0])
