@@ -66,7 +66,7 @@ def evaluate_directory(args, device):
     fid_table = OrderedDict()
     precision_table = OrderedDict()
     recall_table = OrderedDict()
-    for task_id in range(n_batches):
+    for task_id in range(n_batches):    
         fid_table[task_id] = OrderedDict()
         precision_table[task_id] = OrderedDict()
         recall_table[task_id] = OrderedDict()
@@ -98,6 +98,42 @@ def evaluate_directory(args, device):
 
     return fid_table, precision_table, recall_table
 
+
+def evaluate_on_concatenated_dataset(args, device):
+    train_dataset, val_dataset = dataloaders.base.__dict__[args.dataset](args.dataroot, args.skip_normalization,
+                                                                         False)
+    if args.dataset.lower() == "celeba":
+        n_classes = 10
+    else:
+        n_classes = train_dataset.number_classes
+    n_batches = args.num_batches
+    train_dataset_splits, val_dataset_splits, task_output_space = data_split(dataset=train_dataset,
+                                                                             dataset_name=args.dataset.lower(),
+                                                                             num_batches=n_batches,
+                                                                             num_classes=n_classes,
+                                                                             random_split=args.random_split,
+                                                                             random_mini_shuffle=args.random_shuffle,
+                                                                             limit_data=args.limit_data,
+                                                                             dirichlet_split_alpha=args.dirichlet)
+    val_loaders = []
+    for task_name in range(n_batches):
+        val_data = val_dataset_splits[
+            task_name] if args.score_on_val else train_dataset_splits[task_name]
+        val_loader = data.DataLoader(dataset=val_data, batch_size=args.val_batch_size, shuffle=False,
+                                     num_workers=args.workers)
+        val_loaders.append(val_loader)
+
+    validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
+                          stats_file_name=
+                          f"compare_files_{args.dataset}_{args.directory}",
+                          score_model_device=device, dataloaders=val_loaders)
+
+    examples = np.load(f"{args.directory}/generations_concat.npy")
+    if args.dataset.lower() in ["mnist", "fashionmnist", "omniglot", "doublemnist"]:
+        examples = examples.reshape([-1, 1, 28, 28])
+    fid_result, precision, recall = validator.compute_fid_from_concatenated_examples(args, examples)  # task_id != 0)
+    print(f"FID: {fid_result}")
+    return fid_result, precision, recall
 
 def get_args(argv):
     parser = argparse.ArgumentParser()
@@ -145,11 +181,4 @@ if __name__ == '__main__':
     os.makedirs(f"{args.rpath}{args.experiment_name}", exist_ok=True)
     with open(f"{args.rpath}{args.experiment_name}/args.txt", "w") as text_file:
         text_file.write(str(args))
-    acc_val, precision, recall = evaluate_directory(args, device)
-    acc_val_dict, acc_test, precision_table, recall_table = {}, {}, {}, {}
-    acc_val_dict[0] = acc_val
-    precision_table[0], recall_table[0] = precision, recall
-    np.save(f"{args.rpath}{args.experiment_name}/fid.npy", acc_val_dict)
-    np.save(f"{args.rpath}{args.experiment_name}/precision.npy", precision_table)
-    np.save(f"{args.rpath}{args.experiment_name}/recall.npy", recall_table)
-    plot_final_results([args.experiment_name], type="fid")
+    fid, precision, recall = evaluate_on_concatenated_dataset(args, device)

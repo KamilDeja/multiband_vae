@@ -164,3 +164,58 @@ class Validator:
         return calculate_frechet_distance(
             distribution_gen[np.random.choice(len(distribution_gen), len(distribution_orig), False)],
             distribution_orig), precision, recall
+
+
+    def compute_fid_from_concatenated_examples(self, args, generations):
+        distribution_orig = []
+        precalculated_statistics = False
+        stats_file_path = f"results/orig_stats/compare_files_{args.dataset}_{args.experiment_name}_concatenated.npy"
+
+
+        if os.path.exists(stats_file_path):
+            print(f"Loading cached original data statistics from: {self.stats_file_name}")
+            distribution_orig = np.load(stats_file_path)
+            precalculated_statistics = True
+        print("Calculating FID:")
+        if not precalculated_statistics:
+            for test_loader in self.dataloaders:
+                for idx, batch in enumerate(test_loader):
+                    x = batch[0].to(self.device)
+                    if args.dataset.lower() in ["fashionmnist", "doublemnist"]:
+                        x = x.repeat([1, 3, 1, 1])
+                    distribution_orig.append(self.score_model_func(x).cpu().detach().numpy())
+
+        if args.dataset.lower() in ["mnist", "fashionmnist", "omniglot", "doublemnist"]:
+            generations = generations.reshape(-1, 1, 28, 28)
+        elif args.dataset.lower() == "celeba":
+            generations = generations.reshape(-1, 3, 64, 64)
+        generations = torch.from_numpy(generations).to(self.device)
+        if args.dataset.lower() in ["fashionmnist", "doublemnist"]:
+            generations = generations.repeat([1, 3, 1, 1])
+
+        if not precalculated_statistics:
+            distribution_orig = np.array(np.concatenate(distribution_orig)).reshape(-1, self.dims)
+            np.save(stats_file_path, distribution_orig)
+
+        distribution_gen = []
+        batch_size = args.val_batch_size
+        max_len = min(len(generations), len(distribution_orig))
+        for idx in range(0, max_len, batch_size):
+            start_point = idx
+            end_point = min(max_len, idx + batch_size)
+            distribution_gen.append(
+                self.score_model_func(generations[start_point:end_point]).cpu().detach().numpy().reshape(-1, self.dims))
+        distribution_gen = np.concatenate(distribution_gen)
+
+        print(f"Orig:{len(distribution_orig)}, Gen:{len(distribution_gen)}")
+        precision, recall = compute_prd_from_embedding(
+            eval_data=distribution_orig,
+            ref_data=distribution_gen[np.random.choice(len(distribution_gen), len(distribution_orig), False)]
+        )
+        precision, recall = prd_to_max_f_beta_pair(precision, recall)
+        print(f"Precision:{precision},recall: {recall}")
+
+        return calculate_frechet_distance(
+            distribution_gen[np.random.choice(len(distribution_gen), len(distribution_orig), False)],
+            distribution_orig), precision, recall
+
