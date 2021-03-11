@@ -32,7 +32,8 @@ def run(args):
                                                                              random_split=args.random_split,
                                                                              random_mini_shuffle=args.random_shuffle,
                                                                              limit_data=args.limit_data,
-                                                                             dirichlet_split_alpha=args.dirichlet)
+                                                                             dirichlet_split_alpha=args.dirichlet,
+                                                                             reverse=args.reverse)
 
     # train_dataset = train_dataset_splits[0]
     train_data = []
@@ -92,6 +93,8 @@ def get_args(argv):
                         help="limit_data to given %")
     parser.add_argument('--dirichlet', default=None, type=float,
                         help="Alpha parameter for dirichlet data split")
+    parser.add_argument('--reverse', dest='reverse', default=False, action='store_true',
+                        help="Reverse the ordering of batches")
 
     args = parser.parse_args(argv)
 

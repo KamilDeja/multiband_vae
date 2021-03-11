@@ -47,11 +47,11 @@ class VAE(nn.Module):
             temp = 1
         else:
             hard = False
-        means, log_var, binary_out = self.encoder(x, conds)
+        means, log_var, binary_prob = self.encoder(x, conds)
         std = torch.exp(0.5 * log_var)
-        binary_out_reverse = - binary_out
+        binary_out_reverse = - binary_prob
         if self.binary_latent_size > 0:
-            binary_out_merged = torch.stack([binary_out, binary_out_reverse], -1)
+            binary_out_merged = torch.stack([binary_prob, binary_out_reverse], -1)
             binary_out = F.gumbel_softmax(binary_out_merged, tau=temp, hard=hard, dim=2)[:, :, 0]
         binary_out = binary_out * 2 - 1
         # print(binary_out)
@@ -71,7 +71,7 @@ class VAE(nn.Module):
             return emb
         recon_x = self.decoder(z, binary_out, task_id, conds, translate_noise=translate_noise)
 
-        return recon_x, means, log_var, z, binary_out
+        return recon_x, means, log_var, z, binary_out, binary_prob
 
 
 class Encoder(nn.Module):
@@ -301,6 +301,7 @@ class Translator(nn.Module):
         self.fc4 = nn.Linear(latent_size * self.d // 2, latent_size * self.d)
 
     def forward(self, x, bin_x, task_id):
+        # x = torch.zeros_like(x).to(self.device)
         codes = (task_id * self.p_coding) % (2 ** self.n_dim_coding)
         task_ids = BitUnpacker.unpackbits(codes, self.n_dim_coding).to(self.device)
         task_ids = F.leaky_relu(self.fc_enc_1(task_ids))

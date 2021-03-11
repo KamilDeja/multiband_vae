@@ -79,7 +79,7 @@ def SplitGen(train_dataset, val_dataset, first_split_sz=2, other_split_sz=2, ran
 
 
 def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_split=False, random_mini_shuffle=False,
-               limit_data=None, dirichlet_split_alpha=None, dirichlet_equal_split=True):
+               limit_data=None, dirichlet_split_alpha=None, dirichlet_equal_split=True, reverse=False):
     if dataset_name.lower() == "celeba":
         attr = dataset.attr
         if not dirichlet_split_alpha:
@@ -136,7 +136,11 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
             batch_split = {i: [list(range(i * one_split, (i + 1) * one_split))] for i in range(num_batches)}
         else:
             batch_split = {i: [i] for i in range(num_batches)}
-
+    if reverse:
+        batch_split_reversed = {}
+        for batch_id in batch_split:
+            batch_split_reversed[num_batches - batch_id - 1] = batch_split[batch_id]
+        batch_split = batch_split_reversed
     if dataset_name.lower() == "celeba":
         class_indices = torch.zeros(len(dataset)) - 1
         for class_id in class_split:

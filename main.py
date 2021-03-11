@@ -39,16 +39,8 @@ def run(args):
                                                                              random_split=args.random_split,
                                                                              random_mini_shuffle=args.random_shuffle,
                                                                              limit_data=args.limit_data,
-                                                                             dirichlet_split_alpha=args.dirichlet)
-    # else:
-    #     # from vae_experiments import models_definition_mnist as models_definition
-    #     train_dataset_splits, val_dataset_splits, task_output_space = SplitGen(train_dataset, val_dataset,
-    #                                                                            first_split_sz=args.first_split_size,
-    #                                                                            other_split_sz=args.other_split_size,
-    #                                                                            rand_split=args.rand_split,
-    #                                                                            remap_class=not args.no_class_remap,
-    #                                                                            random_split=args.random_split)
-    #
+                                                                             dirichlet_split_alpha=args.dirichlet,
+                                                                             reverse=args.reverse)
 
     if args.training_procedure == "replay":
         from vae_experiments import models_definition  # models_definition_replay as models_definition
@@ -238,6 +230,8 @@ def get_args(argv):
     parser.add_argument('--workers', type=int, default=0, help="#Thread for dataloader")
     parser.add_argument('--dirichlet', default=None, type=float,
                         help="Alpha parameter for dirichlet data split")
+    parser.add_argument('--reverse', dest='reverse', default=False, action='store_true',
+                        help="Reverse the ordering of batches")
 
     # Generative network - multiband vae
     parser.add_argument('--gen_batch_size', type=int, default=50)

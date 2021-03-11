@@ -49,7 +49,8 @@ def evaluate_directory(args, device):
                                                                              random_split=args.random_split,
                                                                              random_mini_shuffle=args.random_shuffle,
                                                                              limit_data=args.limit_data,
-                                                                             dirichlet_split_alpha=args.dirichlet)
+                                                                             dirichlet_split_alpha=args.dirichlet,
+                                                                             reverse=args.reverse)
     val_loaders = []
     for task_name in range(n_batches):
         val_data = val_dataset_splits[
@@ -111,6 +112,8 @@ def get_args(argv):
     parser.add_argument('--seed', type=int, required=False, default=11,
                         help="Random seed. If defined all random operations will be reproducible")
     parser.add_argument('--num_batches', type=int, default=5)
+    parser.add_argument('--reverse', dest='reverse', default=False, action='store_true',
+                        help="Reverse the ordering of batches")
 
     parser.add_argument('--val_batch_size', type=int, default=250)
     parser.add_argument('--dataset', type=str, default='MNIST', help="MNIST(default)|CelebA")

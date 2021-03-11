@@ -26,7 +26,7 @@ def entropy(logits):
     return -p_log_p.sum(-1)
 
 
-def loss_fn(y, x_target, mu, sigma, marginal_loss, scale_marginal_loss = 1, lap_loss_fn=None):
+def loss_fn(y, x_target, mu, sigma, marginal_loss, scale_marginal_loss=1, lap_loss_fn=None):
     # marginal_likelihood = bce_loss(y, x_target) / y.size(0)
     marginal_likelihood = scale_marginal_loss * marginal_loss(y, x_target) / y.size(0)
     KL_divergence = -0.5 * torch.sum(1 + sigma - mu.pow(2) - sigma.exp()) / y.size(0)
@@ -40,15 +40,26 @@ def loss_fn(y, x_target, mu, sigma, marginal_loss, scale_marginal_loss = 1, lap_
     return loss, KL_divergence
 
 
-def bin_loss_fn(x):
-    utilization_loss = x.mean(0).pow(2).sum()  # (x.mean()).pow(2)  # Mean should be zero
+def bin_loss_fn(x_bin, x):
+    # x_bin = (x_bin + 1) / 2
+    x_bin = (torch.sign(x) + 1) / 2
+    eps = 1e-7
+    # print(x.max().item(), x.min().item())
+    # p_x = torch.sigmoid(x)  #
+    # p_x = x_bin.sum(dim=0) / len(x_bin)
+    p_x = torch.sigmoid(x)
+    # p_x = x.mean(dim=0)
+    # print(p_x.max(dim=0)[0].detach().cpu().numpy(), p_x.min(dim=0)[0].detach().cpu().numpy())
+    bin_kl = torch.sum(x_bin * torch.log2((p_x / 0.5) + eps) + (1 - x_bin) * torch.log2(((1 - p_x) / 0.5) + eps))
+    # print(p_x, x.max(), x.min(), bin_kl)
+    # utilization_loss = x.mean(0).pow(2).sum()  # (x.mean()).pow(2)  # Mean should be zero
     # x = x / 2 + 0.5
     # with torch.no_grad():
     #     targets = torch.round(x)
     # # print(x)
     # binarizatison_loss = bce_loss(x, targets) / x.size(0)
     # print(f"Utilization_loss {utilization_loss}")# Binarization_loss {binarization_loss}")
-    return 0  # 50 * utilization_loss  # binarization_loss#utilization_loss + binarization_loss
+    return 0.01 * bin_kl  # 0  # 50 * utilization_loss  # binarization_loss#utilization_loss + binarization_loss
 
 
 def cosine_distance(x1, x2=None, eps=1e-8):
@@ -83,7 +94,8 @@ def find_best_starting_point(local_vae, task_loader, task_id):
     return torch.min(losses), torch.argmin(losses).item()
 
 
-def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n_epochs=100, scale_marginal_loss=1, use_lap_loss=False,
+def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n_epochs=100, scale_marginal_loss=1,
+                          use_lap_loss=False,
                           local_start_lr=0.001, scheduler_rate=0.99, scale_local_lr=False):
     local_vae.train()
     local_vae.decoder.translator.train()
@@ -116,6 +128,7 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
     for epoch in range(n_epochs):
         losses = []
         kl_divs = []
+        bin_kl_divs = [0]
         start = time.time()
 
         if (task_id != 0) and (epoch == min(20, max(n_epochs // 10, 5))):
@@ -134,11 +147,11 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
 
             x = batch[0].to(local_vae.device)
             y = batch[1]  # .to(local_vae.device)
-            recon_x, mean, log_var, z, bin_x = local_vae(x, starting_point, y, temp=gumbel_temp,
-                                                         translate_noise=translate_noise)
+            recon_x, mean, log_var, z, bin_x, binary_prob = local_vae(x, starting_point, y, temp=gumbel_temp,
+                                                                      translate_noise=translate_noise)
 
             loss, kl_div = loss_fn(recon_x, x, mean, log_var, marginal_loss, scale_marginal_loss, lap_loss)
-            # binary_loss = bin_loss_fn(bin_x)
+            # binary_loss = bin_loss_fn(bin_x, binary_prob)
             loss_final = loss  # + binary_loss
             optimizer.zero_grad()
             loss_final.backward()
@@ -147,6 +160,7 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
 
             kl_divs.append(kl_div.item())
             losses.append(loss.item())
+            # bin_kl_divs.append(binary_loss.item())
             if epoch == 0:
                 class_counter = torch.unique(y, return_counts=True)
                 table_tmp[class_counter[0]] += class_counter[1].cpu()
@@ -157,8 +171,11 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
         #     print("lr:",scheduler.get_lr())
         #     print(iteration,len(task_loader))
         if epoch % 1 == 0:
-            print("Epoch: {}/{}, loss: {}, kl_div: {}, took: {} s".format(epoch, n_epochs, np.mean(losses),
-                                                                          np.mean(kl_divs), time.time() - start))
+            print("Epoch: {}/{}, loss: {}, kl_div: {},bin_kl: {}, took: {} s".format(epoch, n_epochs,
+                                                                                     np.round(np.mean(losses), 3),
+                                                                                     np.round(np.mean(kl_divs), 3),
+                                                                                     np.round(np.mean(bin_kl_divs), 3),
+                                                                                     np.round(time.time() - start), 3))
     if local_vae.decoder.ones_distribution == None:
         local_vae.decoder.ones_distribution = (ones_distribution.cpu().detach() / total_examples).view(1, -1)
     else:
@@ -166,6 +183,7 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
                                                          (ones_distribution.cpu().detach() / total_examples).view(1,
                                                                                                                   -1)],
                                                         0)
+    print(local_vae.decoder.ones_distribution)
     return table_tmp
 
 
@@ -221,9 +239,7 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
         losses = []
         start = time.time()
         sum_changed = torch.zeros([task_id + 1])
-        if visualise_latent:
-            visualizer.visualize_latent(global_decoder, epoch, experiment_name)
-        if epoch >= warmup_rounds:
+        if visualise_latent or (epoch >= warmup_rounds):
             orig_images = next(iter(train_dataset_loader_big))
             means, log_var, bin_z = local_vae.encoder(orig_images[0].to(local_vae.device),
                                                       orig_images[1].to(local_vae.device))
@@ -233,6 +249,10 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
             eps = torch.randn([len(orig_images[0]), local_vae.latent_size]).to(local_vae.device)
             z_current_compare = eps * std + means
             task_ids_current_compare = torch.zeros(len(orig_images[0])) + task_id
+        if visualise_latent:
+            # visualizer = Visualizer(global_decoder, class_table, task_id=task_id, experiment_name=experiment_name)
+            visualizer.visualize_latent(local_vae.encoder, global_decoder, epoch, experiment_name,
+                                        orig_images=orig_images[0], orig_labels=orig_images[1])
         if epoch == warmup_rounds:
             #     # torch.save(curr_global_decoder,
             #     #            f"results/MNIST_140_test_for_analysis/model{task_id}_after_warmup_curr_decoder")
