@@ -42,7 +42,8 @@ def run(args):
     if not os.path.exists(save_path):
         os.mkdir(save_path)
 
-    for idx, train_dataset in enumerate(train_dataset_splits.values()):
+    for idx in range(args.num_batches):
+        train_dataset = train_dataset_splits[idx]
         train_loader = DataLoader(train_dataset, batch_size=len(train_dataset))
         batch = next(iter(train_loader))
         batch_data, batch_labels = batch[0], batch[1]
@@ -50,12 +51,6 @@ def run(args):
         labels.append(batch_labels.numpy())
         np.save(f"{save_path}/data_{idx}", batch_data.numpy())
         np.save(f"{save_path}/labels_{idx}", batch_labels.numpy())
-
-    # train_data_np = np.stack(train_data)
-    # np.save(f"{save_path}/{args.dataset.lower()}_{len(train_data)}_batches_random_{args.random_split}_train",train_data_np)
-    # with open(f"{save_path}/{args.dataset.lower()}_{len(train_data)}_batches_random_{args.random_split}_train",
-    #           "wb") as file:
-    #     pickle.dump(train_data, file, protocol=2)
 
 
 def get_args(argv):

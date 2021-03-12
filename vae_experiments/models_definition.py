@@ -53,7 +53,9 @@ class VAE(nn.Module):
         if self.binary_latent_size > 0:
             binary_out_merged = torch.stack([binary_prob, binary_out_reverse], -1)
             binary_out = F.gumbel_softmax(binary_out_merged, tau=temp, hard=hard, dim=2)[:, :, 0]
-        binary_out = binary_out * 2 - 1
+            binary_out = binary_out * 2 - 1
+        else:
+            binary_out = torch.tensor([]).to(self.device)
         # print(binary_out)
 
         if noise == None:

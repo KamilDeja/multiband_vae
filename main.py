@@ -40,7 +40,8 @@ def run(args):
                                                                              random_mini_shuffle=args.random_shuffle,
                                                                              limit_data=args.limit_data,
                                                                              dirichlet_split_alpha=args.dirichlet,
-                                                                             reverse=args.reverse)
+                                                                             reverse=args.reverse,
+                                                                             limit_classes=args.limit_classes)
 
     if args.training_procedure == "replay":
         from vae_experiments import models_definition  # models_definition_replay as models_definition
@@ -232,6 +233,7 @@ def get_args(argv):
                         help="Alpha parameter for dirichlet data split")
     parser.add_argument('--reverse', dest='reverse', default=False, action='store_true',
                         help="Reverse the ordering of batches")
+    parser.add_argument('--limit_classes', type=int, default=-1)
 
     # Generative network - multiband vae
     parser.add_argument('--gen_batch_size', type=int, default=50)
