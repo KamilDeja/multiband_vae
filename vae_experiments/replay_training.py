@@ -7,7 +7,7 @@ from torch import optim, nn
 
 from vae_experiments.latent_visualise import Visualizer
 from vae_experiments.vae_utils import generate_previous_data
-from vae_experiments.training_functions import loss_fn, bin_loss_fn, cosine_distance
+from vae_experiments.training_functions import loss_fn, cosine_distance
 
 
 def train_with_replay(args, local_vae, task_loader, train_dataset_loader_big, task_id, class_table, train_same_z=True):
@@ -62,40 +62,7 @@ def train_with_replay(args, local_vae, task_loader, train_dataset_loader_big, ta
                                                                                                      translate_noise=True,
                                                                                                      return_z=True,
                                                                                                      same_z=train_same_z)
-                # if epoch > warmup_rounds:
-                #     if train_same_z:
-                #         z_prev, z_max, z_bin_prev, z_bin_max = z_prev
-                #     else:
-                #         z_prev, z_bin_prev = z_prev
-                #
-                #     with torch.no_grad():
-                #         means, log_var, bin_z = local_vae.encoder(orig_images, orig_labels)
-                #         std = torch.exp(0.5 * log_var)
-                #         binary_out = torch.distributions.Bernoulli(logits=bin_z).sample()
-                #         z_bin_current_compare = binary_out * 2 - 1
-                #         eps = torch.randn([len(orig_images), local_vae.latent_size]).to(local_vae.device)
-                #         z_current_compare = eps * std + means
-                #         task_ids_current_compare = torch.zeros(len(orig_images)) + task_id
-                #
-                #         current_noise_translated = local_vae.decoder.translator(z_current_compare,
-                #                                                                 z_bin_current_compare,
-                #                                                                 task_ids_current_compare)
-                #         # prev_noise_translated = local_vae.decoder.translator(z_prev, z_bin_prev, task_ids_prev)
-                #         prev_noise_translated = local_vae(recon_prev, task_ids_prev, recon_classes, temp=None,
-                #                                           encode_to_noise=True)
-                #         noise_simmilairty = 1 - cosine_distance(prev_noise_translated,
-                #                                                 current_noise_translated)
-                #         selected_examples = torch.max(noise_simmilairty, 1)[0] > noise_diff_threshold
-                #         if selected_examples.sum() > 0:
-                #             selected_replacements = torch.max(noise_simmilairty, 1)[1][selected_examples]
-                #             recon_prev[selected_examples] = orig_images[selected_replacements]
-                #             # recon_prev = recon_prev[torch.logical_not(selected_examples)]
-                #             # recon_classes = recon_classes[torch.logical_not(selected_examples)]
-                #             switches = torch.unique(task_ids_prev[selected_examples], return_counts=True)
-                #             # task_ids_prev = task_ids_prev[torch.logical_not(selected_examples)]
-                #
-                #             for prev_task_id, sum in zip(switches[0], switches[1]):
-                #                 sum_changed[int(prev_task_id.item())] += sum
+
 
                 task_ids = torch.cat([torch.zeros(x.size(0)) + task_id, task_ids_prev], dim=0)
                 x = torch.cat([x, recon_prev], dim=0)

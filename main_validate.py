@@ -74,15 +74,9 @@ def evaluate_directory(args, device):
         to_plot = []
         print(f"Validation for task: {task_id}")
         for j in range(task_id + 1):
-            val_name = j
-            # print('validation split name:', val_name)
             examples = np.load(f"{args.directory}/generations_{task_id + 1}_{j + 1}.npy")
             if args.dataset.lower() in ["mnist", "fashionmnist", "omniglot", "doublemnist"]:
                 examples = examples.reshape([-1, 1, 28, 28])
-                # print(examples.size())
-                # if args.dataset.lower() in ["fashionmnist", "doublemnist"]:
-                #     examples = examples.repeat([1, 3, 1, 1])
-            print(examples.shape)
             to_plot.append(examples[:5])
             fid_result, precision, recall = validator.compute_fid_from_examples(args, examples, j)  # task_id != 0)
             fid_table[j][task_id] = fid_result

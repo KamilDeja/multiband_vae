@@ -69,8 +69,8 @@ def plot_final_results(names, rpath='results/', type="fid", fid_local_vae=None):
         # acc_over_time_plot(ax2, arr)
 
     # plt.show()
-    plt.savefig(rpath + names[0] + f"/results_visualisation")
+    plt.savefig(rpath + names[0] + f"/results_visualisation")#, dpi=200)
 
 
 if __name__ == '__main__':
-    plot_final_results(['MNIST_shuffle_limit_01_half_remembring'], type="recall")
+    plot_final_results(['CelebA_50_16_fixed_eval_dirichlet_1_sim09_warmup5_bin8'])

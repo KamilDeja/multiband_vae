@@ -6,8 +6,7 @@ import copy
 def train_multiband(args, models_definition, local_vae, curr_global_decoder, task_id, train_dataset_loader,
                     train_dataset_loader_big, class_table,
                     n_classes, device):
-    # if task_id > 0:
-    #     local_vae.decoder = copy.deepcopy(curr_global_decoder)
+
     if args.gen_load_pretrained_models:
         local_vae=torch.load(args.gen_pretrained_models_dir + f'model{task_id}_local_vae').to(device)
     else:
@@ -30,7 +29,7 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
         curr_global_decoder = copy.deepcopy(local_vae.decoder)
     else:
         print("Train global VAE model")
-        # Retraining global decoder with previous global decoder and local_vae
+        # Retraining global decoder with previous global decoder and new data
         if args.gen_load_pretrained_models:
             curr_global_decoder = torch.load(args.gen_pretrained_models_dir + f'model{task_id}_curr_decoder').to(device)
         else:

@@ -5,16 +5,13 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
-# from geomloss import SamplesLoss
 from torch.distributions.utils import logits_to_probs
 
 from vae_experiments.lap_loss import LapLoss
 from vae_experiments.latent_visualise import Visualizer
 from vae_experiments.vae_utils import *
 import copy
-from vae_experiments.evaluation_models.lenet import Model
 
-# sinkhorn_loss = SamplesLoss("sinkhorn", blur=0.05, scaling=0.95, diameter=0.01, debias=True)
 torch.autograd.set_detect_anomaly(True)
 
 
@@ -27,10 +24,8 @@ def entropy(logits):
 
 
 def loss_fn(y, x_target, mu, sigma, marginal_loss, scale_marginal_loss=1, lap_loss_fn=None):
-    # marginal_likelihood = bce_loss(y, x_target) / y.size(0)
     marginal_likelihood = scale_marginal_loss * marginal_loss(y, x_target) / y.size(0)
     KL_divergence = -0.5 * torch.sum(1 + sigma - mu.pow(2) - sigma.exp()) / y.size(0)
-    # KL_divergence = torch.mean(KL_divergence) / y.size(1)  # / y.size(0)  # / y.size(1)
     if lap_loss_fn:
         lap_loss = lap_loss_fn(y, x_target)
         loss = marginal_likelihood + x_target[0].size()[1] * x_target[0].size()[1] * lap_loss + KL_divergence
@@ -40,27 +35,6 @@ def loss_fn(y, x_target, mu, sigma, marginal_loss, scale_marginal_loss=1, lap_lo
     return loss, KL_divergence
 
 
-def bin_loss_fn(x_bin, x):
-    # x_bin = (x_bin + 1) / 2
-    x_bin = (torch.sign(x) + 1) / 2
-    eps = 1e-7
-    # print(x.max().item(), x.min().item())
-    # p_x = torch.sigmoid(x)  #
-    # p_x = x_bin.sum(dim=0) / len(x_bin)
-    p_x = torch.sigmoid(x)
-    # p_x = x.mean(dim=0)
-    # print(p_x.max(dim=0)[0].detach().cpu().numpy(), p_x.min(dim=0)[0].detach().cpu().numpy())
-    bin_kl = torch.sum(x_bin * torch.log2((p_x / 0.5) + eps) + (1 - x_bin) * torch.log2(((1 - p_x) / 0.5) + eps))
-    # print(p_x, x.max(), x.min(), bin_kl)
-    # utilization_loss = x.mean(0).pow(2).sum()  # (x.mean()).pow(2)  # Mean should be zero
-    # x = x / 2 + 0.5
-    # with torch.no_grad():
-    #     targets = torch.round(x)
-    # # print(x)
-    # binarizatison_loss = bce_loss(x, targets) / x.size(0)
-    # print(f"Utilization_loss {utilization_loss}")# Binarization_loss {binarization_loss}")
-    return 0.01 * bin_kl  # 0  # 50 * utilization_loss  # binarization_loss#utilization_loss + binarization_loss
-
 
 def cosine_distance(x1, x2=None, eps=1e-8):
     x2 = x1 if x2 is None else x2
@@ -69,29 +43,6 @@ def cosine_distance(x1, x2=None, eps=1e-8):
     return 1 - torch.mm(x1, x2.t()) / (w1 * w2.t()).clamp(min=eps)
 
 
-def find_best_starting_point(local_vae, task_loader, task_id):
-    if task_id == 0:
-        return 1, 0
-    if task_id == 1:
-        return 1, 0
-    with torch.no_grad():
-        loss = nn.MSELoss()
-        losses = torch.zeros(task_id)
-        for iteration, batch in enumerate(task_loader):
-            x = batch[0].to(local_vae.device)
-            y = batch[1]  # .to(local_vae.device)
-            batch_size = len(x)
-            noise = torch.randn([batch_size, local_vae.latent_size]).to(local_vae.device).repeat([task_id, 1])
-            task_ids = torch.Tensor([[task] * batch_size for task in range(task_id)]).view(-1)
-            recon_x, _, _, _, _ = local_vae(x.repeat([task_id, 1, 1, 1]), task_ids, y.view(-1).repeat([task_id]),
-                                            temp=1,
-                                            translate_noise=True, noise=noise)
-            for task in range(task_id):
-                losses[task] += (loss(x, recon_x[task * batch_size:(task + 1) * batch_size])).item()
-            if iteration > 10:
-                break
-        print(f"Starting points_losses:{losses}")
-    return torch.min(losses), torch.argmin(losses).item()
 
 
 def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n_epochs=100, scale_marginal_loss=1,
@@ -100,7 +51,6 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
     local_vae.train()
     local_vae.decoder.translator.train()
     translate_noise = True
-    # min_loss, starting_point = find_best_starting_point(local_vae, task_loader, task_id)
     starting_point = task_id
     print(f"Selected {starting_point} as staring point for task {task_id}")
     local_vae.starting_point = starting_point
@@ -122,8 +72,7 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=scheduler_rate)
     else:
         optimizer = torch.optim.Adam(list(local_vae.parameters()), lr=lr, weight_decay=1e-5)
-        # n_epochs = n_epochs * 2
-        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)  # scheduler_rate)
+        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
 
     for epoch in range(n_epochs):
         losses = []
@@ -135,8 +84,6 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
             print("End of local_vae pretraining")
             optimizer = torch.optim.Adam(list(local_vae.parameters()), lr=lr, weight_decay=1e-5)
             scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=scheduler_rate)
-            # for name, p in local_vae.named_parameters():
-            #     p.requires_grad = True
         gumbel_temp = max(1 - (5 * epoch / (n_epochs)), 0.01)
         if gumbel_temp < 0.1:
             gumbel_temp = None
@@ -146,12 +93,11 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
         for iteration, batch in enumerate(task_loader):
 
             x = batch[0].to(local_vae.device)
-            y = batch[1]  # .to(local_vae.device)
+            y = batch[1]
             recon_x, mean, log_var, z, bin_x, binary_prob = local_vae(x, starting_point, y, temp=gumbel_temp,
                                                                       translate_noise=translate_noise)
 
             loss, kl_div = loss_fn(recon_x, x, mean, log_var, marginal_loss, scale_marginal_loss, lap_loss)
-            # binary_loss = bin_loss_fn(bin_x, binary_prob)
             loss_final = loss  # + binary_loss
             optimizer.zero_grad()
             loss_final.backward()
@@ -160,7 +106,7 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
 
             kl_divs.append(kl_div.item())
             losses.append(loss.item())
-            # bin_kl_divs.append(binary_loss.item())
+
             if epoch == 0:
                 class_counter = torch.unique(y, return_counts=True)
                 table_tmp[class_counter[0]] += class_counter[1].cpu()
@@ -168,8 +114,6 @@ def train_local_generator(local_vae, dataset, task_loader, task_id, n_classes, n
                 ones_distribution += (bin_x / 2 + 0.5).sum(0)
                 total_examples += len(bin_x)
         scheduler.step()
-        #     print("lr:",scheduler.get_lr())
-        #     print(iteration,len(task_loader))
         if epoch % 1 == 0:
             print("Epoch: {}/{}, loss: {}, kl_div: {},bin_kl: {}, took: {} s".format(epoch, n_epochs,
                                                                                      np.round(np.mean(losses), 3),
@@ -219,15 +163,14 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
     global_decoder.ones_distribution = local_vae.decoder.ones_distribution
     curr_global_decoder.ones_distribution = local_vae.decoder.ones_distribution
 
-    # optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)
+
     optimizer = torch.optim.Adam(list(global_decoder.translator.parameters()), lr=global_lr)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=scheduler_rate)
     if dataset == "MNIST":
         criterion = nn.BCELoss(reduction="sum")
     else:
         criterion = nn.MSELoss(reduction="sum")
-    class_samplers = prepare_class_samplres(task_id + 1, class_table)
-    local_starting_point = torch.zeros([batch_size]) + local_vae.starting_point
+
     n_prev_examples = int(batch_size * min(task_id, 3) * limit_previous_examples)
 
     tmp_decoder = curr_global_decoder
@@ -250,13 +193,10 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
             z_current_compare = eps * std + means
             task_ids_current_compare = torch.zeros(len(orig_images[0])) + task_id
         if visualise_latent:
-            # visualizer = Visualizer(global_decoder, class_table, task_id=task_id, experiment_name=experiment_name)
             visualizer.visualize_latent(local_vae.encoder, global_decoder, epoch, experiment_name,
                                         orig_images=orig_images[0], orig_labels=orig_images[1])
         if epoch == warmup_rounds:
-            #     # torch.save(curr_global_decoder,
-            #     #            f"results/MNIST_140_test_for_analysis/model{task_id}_after_warmup_curr_decoder")
-            optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)  # , momentum=0.9)
+            optimizer = torch.optim.Adam(list(global_decoder.parameters()), lr=global_lr)
             scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=scheduler_rate)
         for iteration in range(n_iterations):
             # Building dataset from previous global model and local model
@@ -327,7 +267,6 @@ def train_global_decoder(curr_global_decoder, local_vae, task_id, class_table,
                 loss = criterion(global_recon, recon_concat[start_point:end_point])
                 global_decoder.zero_grad()
                 loss.backward()
-                # nn.utils.clip_grad_value_(global_decoder.parameters(), 5.0)
                 optimizer.step()
 
                 losses.append(loss.item())

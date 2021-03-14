@@ -23,7 +23,7 @@ class Visualizer:
         self.umap = umap.UMAP(metric="cosine", n_neighbors=100)
         # embeddings = torch.cat(embeddings_prev, embeddings_curr)
         # self.umap.fit(embeddings_prev.cpu())
-        self.selected_images = list(range(0, 1000, 50))
+        self.selected_images = list(range(0, 1000, 200))
         save_dir = f"results/{experiment_name}/latent_images/"
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
@@ -61,17 +61,17 @@ class Visualizer:
             examples.append(decoder(noise_tmp, bin_tmp, task_id_tmp, None).detach().cpu().numpy().squeeze())
             examples_locations.append(noises_to_plot.iloc[i])
 
-        for i in range(len(self.selected_images)//self.task_id):
+        for i in range(len(self.selected_images) // self.task_id):
             examples.append(orig_images[0][i].detach().cpu().numpy().squeeze())
             # print(len(task_ids_prev),len(noises_to_plot))
-            examples_locations.append(noises_to_plot.iloc[len(task_ids_prev)+i])
+            examples_locations.append(noises_to_plot.iloc[len(task_ids_prev) + i])
 
         fig, ax = plt.subplots(figsize=(15, 10))
         # ax.scatter(noises_to_plot_tsne[0],noises_to_plot_tsne[1],c=noises_to_plot_tsne["batch"],s=3,alpha=0.8)
         sns.scatterplot(
             x=0, y=1,
             hue="batch",
-            palette=sns.color_palette("hls", self.task_id+1),
+            palette=sns.color_palette("hls", 3)[:self.task_id + 1],
             data=noises_to_plot,
             legend="full",
             alpha=0.9
@@ -80,8 +80,8 @@ class Visualizer:
         for location, example in zip(examples_locations, examples):
             x, y = location[0], location[1]
             batch = int(location["batch"])
-            ab = AnnotationBbox(OffsetImage(example), (x, y), frameon=True,
-                                bboxprops=dict(facecolor=sns.color_palette("hls", self.task_id+1)[batch], width=10))
+            ab = AnnotationBbox(OffsetImage(example, cmap='Greys', zoom=2), (x, y), frameon=True,
+                                bboxprops=dict(facecolor=sns.color_palette("hls", 3)[batch], width=10))
             ax.add_artist(ab)
 
         plt.title(f"Latent visualisation epoch {epoch_n}", fontsize=34)

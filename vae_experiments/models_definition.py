@@ -8,11 +8,6 @@ import numpy as np
 from vae_experiments.vae_utils import BitUnpacker
 
 
-def one_hot_conditionals(y, device, cond_dim):
-    zero_ar = torch.zeros(y.shape[0], cond_dim)
-    zero_ar[np.array(range(y.shape[0])), y] = 1
-    return zero_ar.to(device)  # torch.Tensor(zero_ar).type(torch.float).to(device))
-
 
 class VAE(nn.Module):
     def __init__(self, latent_size, binary_latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding,
@@ -81,8 +76,7 @@ class Encoder(nn.Module):
     def __init__(self, latent_size, binary_latent_size, d, cond_dim, cond_p_coding, cond_n_dim_coding, device, in_size,
                  fc):
         super().__init__()
-        # assert cond_dim == 10  # change cond_n_dim_coding
-        assert cond_n_dim_coding == 0  # Doesn't work right now
+        assert cond_n_dim_coding == 0  # Class conditioning not supported
         self.d = d
         self.cond_p_coding = cond_p_coding
         self.cond_n_dim_coding = cond_n_dim_coding
@@ -188,8 +182,7 @@ class Decoder(nn.Module):
         self.trainable_embeddings = trainable_embeddings
         self.in_size = in_size
         self.fc = fc
-        self.ones_distribution = None  # torch.zeros(binary_latent_size)
-        # self.fc0 = nn.Linear(latent_size, latent_size)
+        self.ones_distribution = None
 
         if in_size == 28:
             self.scaler = 4
@@ -214,8 +207,6 @@ class Decoder(nn.Module):
                                      self.d * self.scaler * self.scaler * self.scaler)
             if in_size == 28:
                 self.scaler = 4
-                # self.fc2 = nn.Linear(self.d * 4, self.d * 8)
-                # self.fc3 = nn.Linear(latent_size + cond_n_dim_coding, self.d * self.scaler * self.scaler * self.scaler)
                 self.dc1 = nn.ConvTranspose2d(self.d * self.scaler, self.d * self.scaler, kernel_size=4, stride=2,
                                               padding=0, bias=False)
                 self.dc1_bn = nn.BatchNorm2d(self.d * 4)
@@ -294,12 +285,8 @@ class Translator(nn.Module):
         if binary_latent_size > 0:
             self.fc_bin_enc_1 = nn.Linear(binary_latent_size, binary_latent_size * 2)
             self.fc_bin_enc_2 = nn.Linear(binary_latent_size * 2, binary_latent_size * 3)
-            # self.fc_enc_joined = nn.Linear(binary_latent_size * 3 + n_dim_coding * 3,
-            #                                binary_latent_size * 3 + n_dim_coding * 3)
+
         self.fc1 = nn.Linear(n_dim_coding * 2 + latent_size + binary_latent_size * 3, latent_size * self.d // 2)
-        # self.fc2 = nn.Linear(latent_size * self.d // 2, max(latent_size * n_dim_coding, 32))
-        # self.fc3 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size * latent_size)
-        # self.fc4 = nn.Linear(max(latent_size * n_dim_coding, 32), latent_size)
         self.fc4 = nn.Linear(latent_size * self.d // 2, latent_size * self.d)
 
     def forward(self, x, bin_x, task_id):
@@ -311,18 +298,11 @@ class Translator(nn.Module):
         if self.binary_latent_size > 0:
             bin_x = F.leaky_relu(self.fc_bin_enc_1(bin_x))
             bin_x = F.leaky_relu(self.fc_bin_enc_2(bin_x))
-        #     enc = torch.cat([bin_x, task_ids], dim=1)
-        #     enc = F.leaky_relu(self.fc_enc_joined(enc))
-        #     x = torch.cat([x, enc], dim=1)
-        # else:
-        # xi = x[:, :4]
-        # xi = F.leaky_relu(self.fc_new_bin_1(xi))
-        # xi = self.fc_new_bin_2(xi)
-        # xi = torch.sign(xi) * torch.abs(xi).pow(1 / 3) * torch.exp(-0.5 * xi.pow(2))
+
         x = torch.cat([x, bin_x, task_ids], dim=1)
         x = F.leaky_relu(self.fc1(x))
         out = self.fc4(x)
-        return out  # task_ids_enc_resized, bias
+        return out
 
 
 class Translator_embeddings(nn.Module):

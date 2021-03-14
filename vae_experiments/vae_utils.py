@@ -28,7 +28,6 @@ class BitUnpacker:
 
 
 def prepare_class_samplres(task_id, class_table):
-    ########### Maybe compute only once and pass to the function?
     class_samplers = []
     for task_id in range(task_id):
         local_probs = class_table[task_id] * 1.0 / torch.sum(class_table[task_id])
@@ -55,7 +54,6 @@ def plot_results(experiment_name, curr_global_decoder, class_table, n_tasks, n_i
         bin_z = bin_z.repeat([n_tasks + 1, 1]).to(curr_global_decoder.device)
     else:
         z = torch.randn([n_img * (n_tasks + 1), curr_global_decoder.latent_size]).to(curr_global_decoder.device)
-        # bin_z = torch.rand([n_img, curr_global_decoder.binary_latent_size]).to(curr_global_decoder.device)
         ones_dist = torch.stack([curr_global_decoder.ones_distribution[int(task.item())] for task in task_ids])
         bin_z = torch.bernoulli(ones_dist).to(curr_global_decoder.device)
         bin_z = torch.round(bin_z) * 2 - 1
@@ -156,9 +154,7 @@ def generate_previous_data(curr_global_decoder, class_table, n_tasks, n_img, num
 
         if same_z:
             z, _, bin_z, _ = z_combined
-            # z = z.to(curr_global_decoder.device)
         else:
-            # z_combined.to(curr_global_decoder.device)
             z, bin_z = z_combined
 
         if return_z:

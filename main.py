@@ -8,12 +8,10 @@ from random import shuffle
 from collections import OrderedDict
 
 import continual_benchmark.dataloaders.base
-import continual_benchmark.agents as agents
 import continual_benchmark.dataloaders as dataloaders
-from continual_benchmark.dataloaders.datasetGen import SplitGen, PermutedGen, data_split
+from continual_benchmark.dataloaders.datasetGen import data_split
 from vae_experiments import multiband_training, replay_training
 
-from vae_experiments import training_functions
 from vae_experiments import vae_utils
 from vae_experiments.validation import Validator
 
@@ -31,7 +29,7 @@ def run(args):
         n_classes = 10
     else:
         n_classes = train_dataset.number_classes
-    n_batches = args.num_batches  # n_classes // args.other_split_size
+    n_batches = args.num_batches
     train_dataset_splits, val_dataset_splits, task_output_space = data_split(dataset=train_dataset,
                                                                              dataset_name=args.dataset.lower(),
                                                                              num_batches=n_batches,
@@ -54,9 +52,6 @@ def run(args):
         labels_tasks[int(task_name)] = task.dataset.class_list
 
     n_tasks = len(labels_tasks)
-
-    # n_channels = val_dataset.dataset[0][0].size()[0]
-    # in_size = val_dataset.dataset[0][0].size()[1]
 
     # Decide split ordering
     task_names = sorted(list(task_output_space.keys()), key=int)
@@ -154,9 +149,6 @@ def run(args):
 
             torch.save(curr_global_decoder, f"results/{args.experiment_name}/model{task_id}_curr_decoder")
 
-        # local_vae.decoder = curr_global_decoder
-
-        # Classifier validation
 
         fid_table[task_name] = OrderedDict()
         precision_table[task_name] = OrderedDict()
@@ -236,7 +228,7 @@ def get_args(argv):
     parser.add_argument('--limit_classes', type=int, default=-1)
 
     # Generative network - multiband vae
-    parser.add_argument('--gen_batch_size', type=int, default=50)
+    parser.add_argument('--gen_batch_size', type=int, default=64)
     parser.add_argument('--local_lr', type=float, default=0.001)
     parser.add_argument('--local_scheduler_rate', type=float, default=0.99)
     parser.add_argument('--scale_local_lr', default=False, action='store_true',
@@ -248,16 +240,16 @@ def get_args(argv):
                         help="Number of bits used to code task id in binary autoencoder")
     parser.add_argument('--gen_p_coding', type=int, default=9,
                         help="Prime number used to calculated codes in binary autoencoder")
-    parser.add_argument('--gen_cond_n_dim_coding', type=int, default=4,
+    parser.add_argument('--gen_cond_n_dim_coding', type=int, default=0,
                         help="Number of bits used to code task id in binary autoencoder")
     parser.add_argument('--gen_cond_p_coding', type=int, default=9,
                         help="Prime number used to calculated codes in binary autoencoder")
     parser.add_argument('--gen_latent_size', type=int, default=10, help="Latent size in VAE")
     parser.add_argument('--binary_latent_size', type=int, default=4, help="Binary latent size in VAE")
     parser.add_argument('--gen_d', type=int, default=8, help="Size of binary autoencoder")
-    parser.add_argument('--gen_ae_epochs', type=int, default=20,
+    parser.add_argument('--gen_ae_epochs', type=int, default=70,
                         help="Number of epochs to train local variational autoencoder")
-    parser.add_argument('--global_dec_epochs', type=int, default=20, help="Number of epochs to train global decoder")
+    parser.add_argument('--global_dec_epochs', type=int, default=140, help="Number of epochs to train global decoder")
     parser.add_argument('--gen_load_pretrained_models', default=False, action='store_true',
                         help="Load pretrained generative models")
     parser.add_argument('--gen_pretrained_models_dir', type=str, default="results/pretrained_models",
@@ -272,7 +264,7 @@ def get_args(argv):
                         help="Cosine similarity between examples to merge")
     parser.add_argument('--limit_previous', default=0.5, type=float,
                         help="How much of previous data we want to generate each epoch")
-    parser.add_argument('--global_warmup', default=20, type=int,
+    parser.add_argument('--global_warmup', default=5, type=int,
                         help="Number of epochs for global warmup - only translator training")
     parser.add_argument('--generations_for_switch', default=1000, type=int,
                         help="Number of noise instances we want to create in order to select instances pos")
@@ -311,7 +303,6 @@ if __name__ == '__main__':
     for r in range(args.repeat):
         acc_val[r], _, acc_test[r], precision_table[r], recall_table[r], fid_local_vae = run(args)
     np.save(f"{args.rpath}{args.experiment_name}/fid.npy", acc_val)
-    # np.save(f"{args.rpath}{args.experiment_name}/fid_test.npy", acc_test)
     np.save(f"{args.rpath}{args.experiment_name}/precision.npy", precision_table)
     np.save(f"{args.rpath}{args.experiment_name}/recall.npy", recall_table)
     np.save(f"{args.rpath}{args.experiment_name}/fid_local_vae.npy", fid_local_vae)

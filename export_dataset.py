@@ -24,7 +24,7 @@ def run(args):
         n_classes = 10
     else:
         n_classes = train_dataset.number_classes
-    n_batches = args.num_batches
+
     train_dataset_splits, val_dataset_splits, task_output_space = data_split(dataset=train_dataset,
                                                                              dataset_name=args.dataset.lower(),
                                                                              num_batches=args.num_batches,
@@ -35,7 +35,7 @@ def run(args):
                                                                              dirichlet_split_alpha=args.dirichlet,
                                                                              reverse=args.reverse)
 
-    # train_dataset = train_dataset_splits[0]
+
     train_data = []
     labels = []
     save_path = f"{args.dataroot}/exported/{args.exported_name}_{len(train_dataset_splits)}_batches_random_{args.random_split}_train"
