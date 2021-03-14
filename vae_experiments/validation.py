@@ -60,6 +60,7 @@ class Validator:
                     task_samplers.append(torch.distributions.categorical.Categorical(probs=local_probs))
 
             precalculated_statistics = False
+            os.makedirs(f"results/orig_stats/", exist_ok=True)
             stats_file_path = f"results/orig_stats/{self.dataset}_{self.stats_file_name}_{task_id}.npy"
             if os.path.exists(stats_file_path):
                 print(f"Loading cached original data statistics from: {self.stats_file_name}")
