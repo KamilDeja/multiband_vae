@@ -20,7 +20,8 @@ def train_multiband(args, models_definition, local_vae, curr_global_decoder, tas
                                                              n_epochs=n_epochs, local_start_lr=args.local_lr,
                                                              scheduler_rate=args.local_scheduler_rate,
                                                              scale_local_lr=args.scale_local_lr,
-                                                             scale_marginal_loss=args.scale_reconstruction_loss)
+                                                             scale_marginal_loss=args.scale_reconstruction_loss,
+                                                             use_lap_loss=args.lap_loss)
         class_table[task_id] = tmp_table
     print("Done training local VAE model")
 

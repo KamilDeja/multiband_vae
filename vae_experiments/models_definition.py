@@ -8,7 +8,6 @@ import numpy as np
 from vae_experiments.vae_utils import BitUnpacker
 
 
-
 class VAE(nn.Module):
     def __init__(self, latent_size, binary_latent_size, d, p_coding, n_dim_coding, cond_p_coding, cond_n_dim_coding,
                  cond_dim, device, in_size, fc, standard_embeddings=False,
@@ -57,6 +56,7 @@ class VAE(nn.Module):
             eps = torch.randn([batch_size, self.latent_size]).to(self.device)
         else:
             eps = noise
+        # std = torch.sqrt(std)
         z = eps * std + means
         if not torch.is_tensor(task_id):
             if task_id != None:
@@ -87,9 +87,12 @@ class Encoder(nn.Module):
         if self.in_size == 28:
             in_channels = 1
             self.scaler = 4
+        elif self.in_size == 44:
+            in_channels = 1
+            self.scaler = in_size // 8
         else:
             in_channels = 3
-            self.scaler = 8
+            self.scaler = in_size // 8
         if self.only_fc:
             self.fc_1 = nn.Linear(in_size * in_size * in_channels + cond_n_dim_coding,
                                   self.d * self.scaler * self.scaler)
@@ -110,6 +113,20 @@ class Encoder(nn.Module):
                 # self.fc3 = nn.Linear(self.d * 9, self.d)
                 self.fc = nn.Linear(self.d * 9 + cond_n_dim_coding, self.d * 4)
 
+            if self.in_size == 44:
+                self.conv_out_size = 2
+                self.conv1 = nn.Conv2d(in_channels=1, out_channels=self.d, kernel_size=4, stride=2, padding=1,
+                                       bias=False)
+                self.bn_1 = nn.BatchNorm2d(self.d)
+                self.conv2 = nn.Conv2d(self.d, self.d, kernel_size=4, stride=2, padding=1, bias=False)
+                self.bn_2 = nn.BatchNorm2d(self.d)
+                self.conv3 = nn.Conv2d(self.d, self.d * 2, kernel_size=4, stride=2, padding=1, bias=False)
+                self.bn_3 = nn.BatchNorm2d(self.d * 2)
+                self.conv4 = nn.Conv2d(self.d * 2, self.d * 4, kernel_size=4, stride=2, padding=1, bias=False)
+                self.bn_4 = nn.BatchNorm2d(self.d * 4)
+                self.fc = nn.Linear(self.d * 4 * self.conv_out_size * self.conv_out_size + cond_n_dim_coding,
+                                    self.d * 4)
+
             else:
                 self.conv1 = nn.Conv2d(in_channels=3, out_channels=self.d, kernel_size=5, stride=2, padding=1,
                                        bias=False)
@@ -123,7 +140,15 @@ class Encoder(nn.Module):
 
                 self.conv4 = nn.Conv2d(self.d * 4, self.d * 4, kernel_size=5, stride=2, padding=1, bias=False)
                 self.bn_4 = nn.BatchNorm2d(self.d * 4)
-                self.fc = nn.Linear(self.d * 4 * 3 * 3 + cond_n_dim_coding, self.d * 4)
+                if self.in_size == 64:
+                    self.conv_out_size = 3
+                elif self.in_size == 128:
+                    self.conv_out_size = 7
+                else:
+                    print(f"No model definition for size: {self.in_size}")
+                    raise NotImplementedError
+                self.fc = nn.Linear(self.d * 4 * self.conv_out_size * self.conv_out_size + cond_n_dim_coding,
+                                    self.d * 4)
 
             self.linear_means = nn.Linear(self.d * 4, latent_size)
             self.linear_log_var = nn.Linear(self.d * 4, latent_size)
@@ -152,7 +177,7 @@ class Encoder(nn.Module):
             else:
                 x = self.conv4(x)
                 x = F.leaky_relu(self.bn_4(x))
-                x = x.view([-1, self.d * 4 * 3 * 3])
+                x = x.view([-1, self.d * 4 * self.conv_out_size * self.conv_out_size])
 
             if self.cond_n_dim_coding:
                 x = torch.cat([x, conds_coded], dim=1)
@@ -187,8 +212,11 @@ class Decoder(nn.Module):
         if in_size == 28:
             self.scaler = 4
             out_channels = 1
+        elif in_size == 44:
+            self.scaler = in_size // 8
+            out_channels = 1
         else:
-            self.scaler = 8
+            self.scaler = in_size // 8
             out_channels = 3
 
         if fc:
@@ -206,7 +234,7 @@ class Decoder(nn.Module):
                 self.fc1 = nn.Linear(latent_size * self.d + cond_n_dim_coding,
                                      self.d * self.scaler * self.scaler * self.scaler)
             if in_size == 28:
-                self.scaler = 4
+                # self.scaler = 4
                 self.dc1 = nn.ConvTranspose2d(self.d * self.scaler, self.d * self.scaler, kernel_size=4, stride=2,
                                               padding=0, bias=False)
                 self.dc1_bn = nn.BatchNorm2d(self.d * 4)
@@ -215,11 +243,21 @@ class Decoder(nn.Module):
                 self.dc3 = nn.ConvTranspose2d(self.d * 2, self.d, kernel_size=4, stride=1, padding=0, bias=False)
                 self.dc3_bn = nn.BatchNorm2d(self.d)
                 self.dc_out = nn.ConvTranspose2d(self.d, 1, kernel_size=4, stride=1, padding=0, bias=False)
+            elif in_size == 44:
+                # self.scaler = 4
+                self.dc1 = nn.ConvTranspose2d(self.d * self.scaler, self.d * 4, kernel_size=4, stride=2,
+                                              padding=1, bias=False)
+                self.dc1_bn = nn.BatchNorm2d(self.d * 4)
+                self.dc2 = nn.ConvTranspose2d(self.d * 4, self.d * 2, kernel_size=4, stride=2, padding=0, bias=False)
+                self.dc2_bn = nn.BatchNorm2d(self.d * 2)
+                self.dc3 = nn.ConvTranspose2d(self.d * 2, self.d, kernel_size=4, stride=2, padding=1, bias=False)
+                self.dc3_bn = nn.BatchNorm2d(self.d)
+                self.dc_out = nn.ConvTranspose2d(self.d, 1, kernel_size=3, stride=1, padding=1, bias=False)
             else:
-                self.scaler = 8
+                # self.scaler = 8
                 # self.fc2 = nn.Linear(self.d * 4, self.d * 8)
                 # self.fc3 = nn.Linear(latent_size + cond_n_dim_coding, self.d * 8 * 8 * 8)
-                self.dc1 = nn.ConvTranspose2d(self.d * 8, self.d * 4, kernel_size=5, stride=2,
+                self.dc1 = nn.ConvTranspose2d(self.d * self.scaler, self.d * 4, kernel_size=5, stride=2,
                                               padding=2, output_padding=1, bias=False)
                 self.dc1_bn = nn.BatchNorm2d(self.d * 4)
 
@@ -253,7 +291,9 @@ class Decoder(nn.Module):
         if self.fc:
             x = F.leaky_relu(self.fc1(x))
             x = F.leaky_relu(self.fc_2(x))
-            x = torch.sigmoid(self.fc_out(x))
+            x = self.fc_out(x)
+            if self.in_size != 44:
+                x = torch.sigmoid(x)
             x = x.view(x.size(0), 1, self.in_size, self.in_size)
         else:
             x = self.fc1(x)
@@ -264,7 +304,9 @@ class Decoder(nn.Module):
             x = F.leaky_relu(self.dc2_bn(x))
             x = self.dc3(x)
             x = F.leaky_relu(self.dc3_bn(x))
-            x = torch.sigmoid(self.dc_out(x))
+            x = self.dc_out(x)
+            if self.in_size != 44:
+                x = torch.sigmoid(x)
         if return_emb:
             return x, translator_out
         return x

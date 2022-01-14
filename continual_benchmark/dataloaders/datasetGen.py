@@ -108,17 +108,26 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
             class_split = {i: list(range(split_boundaries[i], split_boundaries[i + 1])) for i in
                            range(len(split_boundaries) - 1)}
 
+    if dataset_name.lower() == "flowers":
+        import pickle
+        # if num_batches == 10:
+        with open("data/flower_data/grouping_10.pkl","rb") as file:
+            class_split = pickle.load(file)
+        num_classes = 10
+        # else:
+        #     raise NotImplementedError
+
     if num_batches == 5:
         if random_mini_shuffle:
             batch_split = {
-                0: [2, 3],
-                1: [2, 0, 1],
+                0: [1],
+                1: [0],
                 2: [4, 5, 6],
                 3: [0, 1],
                 4: [6, 7]
             }
         else:
-            if dataset_name in ["omniglot", "doublemnist"]:
+            if dataset_name in ["omniglot", "doublemnist", "flowers"]:
                 one_split = num_classes // num_batches
                 batch_split = {i: [list(range(i * one_split, (i + 1) * one_split))] for i in range(num_batches)}
             else:
@@ -134,7 +143,7 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
             0: range(10)
         }
     else:
-        if dataset_name in ["omniglot", "doublemnist"]:
+        if dataset_name in ["omniglot", "doublemnist", "flowers"]:
             one_split = num_classes // num_batches
             batch_split = {i: [list(range(i * one_split, (i + 1) * one_split))] for i in range(num_batches)}
         else:
@@ -145,7 +154,18 @@ def data_split(dataset, dataset_name, num_batches=5, num_classes=10, random_spli
             batch_split_reversed[num_batches - batch_id - 1] = batch_split[batch_id]
         batch_split = batch_split_reversed
         print(batch_split)
-    if dataset_name.lower() == "celeba":
+
+    if dataset_name.lower() == "flowers":
+        class_indices = torch.zeros(len(dataset)) - 1
+        inv_class_splits = {}
+        for k, v in class_split.items():
+            for values in v:
+                inv_class_splits[values] = k
+        for label, group in inv_class_splits.items():
+            class_indices[dataset.labels == label] = group
+        class_indices = class_indices.long()
+
+    elif dataset_name.lower() in ["celeba"]:
         class_indices = torch.zeros(len(dataset)) - 1
         for class_id in class_split:
             tmp_attr = class_split[class_id]

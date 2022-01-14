@@ -28,7 +28,7 @@ def loss_fn(y, x_target, mu, sigma, marginal_loss, scale_marginal_loss=1, lap_lo
     KL_divergence = -0.5 * torch.sum(1 + sigma - mu.pow(2) - sigma.exp()) / y.size(0)
     if lap_loss_fn:
         lap_loss = lap_loss_fn(y, x_target)
-        loss = marginal_likelihood + x_target[0].size()[1] * x_target[0].size()[1] * lap_loss + KL_divergence
+        loss = marginal_likelihood + scale_marginal_loss* 10 * x_target[0].size()[1] * x_target[0].size()[1] * lap_loss + KL_divergence
     else:
         loss = marginal_likelihood + KL_divergence
 

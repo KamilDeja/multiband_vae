@@ -13,7 +13,7 @@ from continual_benchmark.dataloaders.datasetGen import data_split
 from vae_experiments import multiband_training, replay_training
 
 from vae_experiments import vae_utils
-from vae_experiments.validation import Validator
+from vae_experiments.validation import Validator, CERN_Validator
 
 from visualise import *
 
@@ -104,10 +104,13 @@ def run(args):
     else:
         labels_tasks_str = ""
     if not args.skip_validation:
-        validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
-                              stats_file_name=
-                              f"seed_{args.seed}_batches_{args.num_batches}_labels_{labels_tasks_str}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}_dirichlet_{args.dirichlet}_limit_{args.limit_data}",
-                              score_model_device=device, dataloaders=val_loaders)
+        stats_file_name = f"seed_{args.seed}_batches_{args.num_batches}_labels_{labels_tasks_str}_val_{args.score_on_val}_random_{args.random_split}_shuffle_{args.random_shuffle}_dirichlet_{args.dirichlet}_limit_{args.limit_data}"
+        if args.dataset.lower() != "cern":
+            validator = Validator(n_classes=n_classes, device=device, dataset=args.dataset,
+                                  stats_file_name=stats_file_name,
+                                  score_model_device=device, dataloaders=val_loaders)
+        else:
+            validator = CERN_Validator(dataloaders=val_loaders, stats_file_name=stats_file_name, device=device)
     curr_global_decoder = None
     for task_id in range(len(task_names)):
         print("######### Task number {} #########".format(task_id))
@@ -149,7 +152,6 @@ def run(args):
 
             torch.save(curr_global_decoder, f"results/{args.experiment_name}/model{task_id}_curr_decoder")
 
-
         fid_table[task_name] = OrderedDict()
         precision_table[task_name] = OrderedDict()
         recall_table[task_name] = OrderedDict()
@@ -158,21 +160,21 @@ def run(args):
                 fid_table[j][task_name] = -1
         else:
             if (args.training_procedure == "multiband") and (not args.gen_load_pretrained_models):
-                fid_result, precision, recall = validator.compute_fid(curr_global_decoder=local_vae.decoder,
-                                                         class_table=class_table,
-                                                         task_id=task_id, translate_noise=translate_noise,
-                                                         starting_point=local_vae.starting_point,
-                                                         dataset=args.dataset)
+                fid_result, precision, recall = validator.calculate_results(curr_global_decoder=local_vae.decoder,
+                                                                            class_table=class_table,
+                                                                            task_id=task_id, translate_noise=translate_noise,
+                                                                            starting_point=local_vae.starting_point,
+                                                                            dataset=args.dataset)
                 fid_local_vae[task_id] = fid_result
                 print(f"FID local VAE: {fid_result}")
             for j in range(task_id + 1):
                 val_name = task_names[j]
                 print('validation split name:', val_name)
-                fid_result, precision, recall = validator.compute_fid(curr_global_decoder=curr_global_decoder,
-                                                                      class_table=class_table,
-                                                                      task_id=j,
-                                                                      translate_noise=translate_noise,
-                                                                      dataset=args.dataset)  # task_id != 0)
+                fid_result, precision, recall = validator.calculate_results(curr_global_decoder=curr_global_decoder,
+                                                                            class_table=class_table,
+                                                                            task_id=j,
+                                                                            translate_noise=translate_noise,
+                                                                            dataset=args.dataset)  # task_id != 0)
                 fid_table[j][task_name] = fid_result
                 precision_table[j][task_name] = precision
                 recall_table[j][task_name] = recall
@@ -233,6 +235,7 @@ def get_args(argv):
     parser.add_argument('--local_scheduler_rate', type=float, default=0.99)
     parser.add_argument('--scale_local_lr', default=False, action='store_true',
                         help="Scale lr of local model based on the reconstruction error")
+    parser.add_argument('--lap_loss', default=False, action='store_true')
     parser.add_argument('--scale_reconstruction_loss', type=float, default=1)
     parser.add_argument('--global_lr', type=float, default=0.0001)
     parser.add_argument('--global_scheduler_rate', type=float, default=0.99)
