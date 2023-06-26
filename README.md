@@ -1,6 +1,6 @@
 # Multiband VAE
 
-This is the code repository for the [Multiband VAE](https://arxiv.org/abs/2106.12196) - an unsupervised method for continual learning of geneartive models.
+This is the code repository for the [Multiband VAE](https://arxiv.org/abs/2106.12196) - an unsupervised method for continual learning of generative models.
 For more information, please refer to the paper:
 
 ## Evaluation from article:
